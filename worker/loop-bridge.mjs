@@ -300,7 +300,7 @@ async function maybeSyncPaperclip(snapshot, config, bridgeState, fp, forceCommen
 
   if (shouldComment) {
     const body = renderMarkdown(snapshot).slice(0, config.maxCommentChars || 5000);
-    await paperclipRequest(config, "POST", `/api/issues/${issueId}/comments`, { body, authorType: "system" }).catch(() => {});
+    await paperclipRequest(config, "POST", `/api/issues/${issueId}/comments`, { body }).catch(() => {});
     bridgeState.lastPaperclipCommentAt = new Date().toISOString();
   }
 
