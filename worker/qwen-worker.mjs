@@ -77,7 +77,10 @@ function defaultState(config = {}) {
 }
 
 async function loadState(config = {}) {
-  return { ...defaultState(config), ...(await readJson(STATE_PATH, {})) };
+  const state = { ...defaultState(config), ...(await readJson(STATE_PATH, {})) };
+  state.primaryModel = config.routing?.implementerModel || config.primaryModel || state.primaryModel;
+  state.fallbackModel = config.routing?.repairModel || config.fallbackModel || state.fallbackModel;
+  return state;
 }
 
 async function saveState(state) {
