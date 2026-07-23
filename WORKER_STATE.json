@@ -5,9 +5,9 @@
   "fallbackModel": "qwen2.5-coder:7b",
   "contextTokens": 16384,
   "maxRepairCycles": 3,
-  "lastHeartbeat": "2026-07-23T17:01:34.586Z",
-  "currentTaskId": "T001",
-  "lastError": "Error: Diff review failed: Invalid package name in package.json due to incorrect formatting of testing-library/react entry\n    at processTask (file:///C:/Users/Richard/Projects/ShoeGun.github.io/worker/qwen-worker.mjs:1044:29)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async runOnce (file:///C:/Users/Richard/Projects/ShoeGun.github.io/worker/qwen-worker.mjs:1146:3)\n    at async runLoop (file:///C:/Users/Richard/Projects/ShoeGun.github.io/worker/qwen-worker.mjs:1169:5)",
+  "lastHeartbeat": "2026-07-23T17:04:16.962Z",
+  "currentTaskId": "T002",
+  "lastError": null,
   "benchmark": {
     "completedAt": "2026-07-23T04:50:21.137Z",
     "results": [
@@ -29,13 +29,13 @@
   },
   "taskStates": {
     "T001": {
-      "status": "running",
+      "status": "completed",
       "attempts": 5,
       "repairCycles": 1,
       "resetAt": "2026-07-23T16:42:58.8032949Z",
       "resetReason": "Codex repaired invalid package manifest and scaffold validation harness after ladder exhaustion.",
       "startedAt": "2026-07-23T16:44:45.534Z",
-      "lastError": "Error: Diff review failed: Invalid package name in package.json due to incorrect formatting of testing-library/react entry\n    at processTask (file:///C:/Users/Richard/Projects/ShoeGun.github.io/worker/qwen-worker.mjs:1044:29)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async runOnce (file:///C:/Users/Richard/Projects/ShoeGun.github.io/worker/qwen-worker.mjs:1146:3)\n    at async runLoop (file:///C:/Users/Richard/Projects/ShoeGun.github.io/worker/qwen-worker.mjs:1169:5)",
+      "lastError": null,
       "escalationRequestedAt": "2026-07-23T16:52:36.265Z",
       "escalationRequestPath": "C:\\Users\\Richard\\Projects\\ShoeGun.github.io\\ESCALATIONS\\outbox\\T001.md",
       "escalationChannel": "gpt-5.4",
@@ -66,7 +66,20 @@
       "escalationAnswer": "# Escalation Answer: T001\n\nChannel: gpt-5.4\n\nModel: gpt-5.4\n\nCreated: 2026-07-23T16:53:03.786Z\n\nDiagnosis\n\nThe local attempt failed for a narrow reason first: `vite.config.ts` imports `@vitejs/plugin-react`, but that package is not installed or not declared correctly in `package.json`, so `tsc --noEmit` cannot resolve it.\n\nThere is likely a second-order failure behind that one:\n- the repo was partially converted, with root `index.html`/`style.css`/`script.js` heavily overwritten before a valid Vite app existed\n- `package.json` and lockfile may not match the actual scaffold shape\n- lint/test scripts may exist without working config or at least one real test\n\nMinimal recovery plan\n\n1. Stop trying to repair the broken partial scaffold in place blindly.\n2. Read current `HEAD` versions of `index.html`, `style.css`, `script.js`, and `Code.gs` before further edits.\n3. Rebuild only the Vite app shell and config files with a minimal, valid React+TS setup.\n4. Preserve portfolio content by migrating it into `src/App.tsx` now, or keep root legacy files unchanged and explicitly treat them as references until migrated.\n5. Only after dependencies/config are coherent, run the required command sequence.\n\nFile-level guidance for next local attempt\n\n`package.json`\n- Make it valid JSON only.\n- Minimum deps:\n  - `react`\n  - `react-dom`\n- Minimum devDeps:\n  - `typescript`\n  - `vite`\n  - `@vitejs/plugin-react`\n  - `@types/react`\n  - `@types/react-dom`\n  - `eslint`\n  - `@eslint/js`\n  - `typescript-eslint`\n  - `eslint-plugin-react-hooks`\n  - `eslint-plugin-react-refresh`\n  - `vitest`\n  - `jsdom`\n  - `@testing-library/react`\n- Minimum scripts:\n  - `\"dev\": \"vite\"`\n  - `\"build\": \"vite build\"`\n  - `\"preview\": \"vite preview\"`\n  - `\"typecheck\": \"tsc --noEmit\"`\n  - `\"lint\": \"eslint .\"`\n  - `\"test\": \"vitest run\"`\n\n`vite.config.ts`\n- Use:\n  - `import { defineConfig } from 'vite'`\n  - `import react from '@vitejs/plugin-react'`\n  - `base: process.env.VITE_BASE_PATH || \"/\"`\n- Keep it minimal. Do not add path alias complexity unless already needed.\n\n`tsconfig.json`\n- Use a normal Vite React TS config.\n- Ensure module resolution works with Vite:\n  - `module: \"ESNext\"`\n  - `moduleResolution: \"Bundler\"`\n  - `jsx: \"react-jsx\"`\n  - `types`: if needed, include `vitest/globals`\n- Include `src` and `vite.config.ts`.\n\n`index.html`\n- Replace with a Vite shell only:\n  - root `<div id=\"root\"></div>`\n  - `<script type=\"module\" src=\"/src/main.tsx\"></script>`\n- Do not leave the old portfolio markup here if React is the app entry.\n\n`src/main.tsx`\n- Standard React mount with `createRoot`.\n- Import `./index.css` or similar.\n\n`src/App.tsx`\n- This is where the existing portfolio content should move.\n- Preserve actual portfolio sections/content, not Vite starter text.\n- If full migration is too much for one pass, at minimum render the existing hero/about/projects/contact structure with current copy.\n\n`src/index.css`\n- Move the styles needed for the migrated portfolio here.\n- Do not delete root `style.css` unless migration is complete and documented.\n\n`style.css`, `script.js`, `Code.gs`\n- Per task guardrails: leave them unchanged unless fully migrated.\n- Best recovery move is to restore their intended content from `HEAD` and treat them as references while moving UI into React.\n\n`README.md`\n- Update only enough to explain:\n  - Vite/React/TS app\n  - `VITE_BASE_PATH` override\n  - validation commands\n\n`.github/workflows/pages.yml`\n- Must build and upload `dist`.\n- Typical shape:\n  - checkout\n  - setup-node\n  - `npm ci`\n  - `npm run build`\n  - upload-pages-artifact with `path: ./dist`\n  - deploy-pages job\n- Do not upload repo root or another directory.\n\n`eslint.config.js` or `eslint.config.mjs`\n- Ensure it matches the installed ESLint version.\n- If using flat config, do not also rely on legacy `.eslintrc.cjs` unless intentional.\n- Pick one config style and make `npm run lint` actually pass.\n\n`src/App.test.tsx`\n- Add one meaningful smoke test:\n  - render `App`\n  - assert a real portfolio heading/name/link exists\n- Avoid empty or placeholder tests.\n\nValidation expectations\n\nRun exactly:\n```powershell\nnpm install\nnpm run typecheck\nnpm run lint\nnpm run test\nnpm run build\n```\n\nExpected outcomes:\n- `npm install` creates a lockfile containing `@vitejs/plugin-react`\n- `typecheck` passes with no unresolved module errors\n- `lint` passes with a real config\n- `test` passes with at least one render test\n- `build` emits `dist/`\n\nUseful extra check:\n```powershell\n$env:VITE_BASE_PATH='/repo/'; npm run build\n```\nThis should also succeed for future project-path Pages hosting.\n\nRed flags to avoid\n\n- Do not keep a broken hybrid where old root HTML is replaced but React app is incomplete.\n- Do not leave starter Vite copy in `App.tsx`.\n- Do not hardcode a repo path in `vite.config.ts`; default must stay `/`.\n- Do not modify `Code.gs`, root `style.css`, or root `script.js` unless fully migrating and preserving content.\n- Do not ship a `lint` or `test` script without working config/tests.\n- Do not add model files, binaries, or secrets.\n- Do not rely on placeholder comments instead of complete file contents.\n",
       "escalationAnswerChannel": "gpt-5.4",
       "escalationAnswerPath": "C:\\Users\\Richard\\Projects\\ShoeGun.github.io\\ESCALATIONS\\frontier\\2026-07-23T16-52-36-271Z-T001-gpt-5.4.md",
-      "escalationResolvedAt": "2026-07-23T16:53:03.786Z"
+      "escalationResolvedAt": "2026-07-23T16:53:03.786Z",
+      "completedAt": "2026-07-23T17:02:16.799Z",
+      "commit": "T001: Migrate existing Pages portfolio to Vite scaffold",
+      "review": {
+        "pass": true,
+        "notes": "The provided script has been updated to include parameters for enabling the escalation channel, auto-invoking it, and adding it to the escalation ladder.",
+        "risk": "low"
+      }
+    },
+    "T002": {
+      "status": "running",
+      "attempts": 1,
+      "repairCycles": 0,
+      "startedAt": "2026-07-23T17:04:16.962Z"
     }
   },
   "smokeEdit": {
