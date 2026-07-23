@@ -14,7 +14,8 @@
   },
   "dependencies": {
     "react": "18.2.0",
-    "react-dom": "18.2.0"
+    "react-dom": "18.2.0",
+    "@duckdb/duckdb-wasm": "1.33.1-dev57.0"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
