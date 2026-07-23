@@ -11,3 +11,4 @@
 - Observed active GPU compute by Voicebox; worker is configured to pause when that remains active.
 
 - [2026-07-23T04:44:09.688Z] GPU busy; worker paused {"reason":"GPU process matched: voicebox"}
+- [2026-07-23T04:48:48.903Z] Running validation command: node worker/smoke-test.mjs
