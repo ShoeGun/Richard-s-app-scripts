@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+.vite/
+.worker-control/
+worker/logs/
+*.log
+.env
+.env.*
+!.env.example
+

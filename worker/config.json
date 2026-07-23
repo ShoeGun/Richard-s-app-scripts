@@ -1,0 +1,35 @@
+{
+  "ollamaUrl": "http://127.0.0.1:11434",
+  "primaryModel": "qwen3:8b",
+  "fallbackModel": "qwen2.5-coder:7b",
+  "contextTokens": 16384,
+  "temperature": 0.15,
+  "keepAlive": "2m",
+  "idleSleepSeconds": 120,
+  "busySleepSeconds": 180,
+  "maxRepairCycles": 3,
+  "knownGpuLockFiles": [
+    "../model_server.lock",
+    "../hermes_ui_test.lock",
+    "model_server.lock",
+    "hermes_ui_test.lock"
+  ],
+  "gpuDenyProcessPatterns": [
+    "voicebox",
+    "comfyui",
+    "comfy",
+    "stable-diffusion",
+    "lm studio"
+  ],
+  "allowedCommandPrefixes": [
+    "npm install",
+    "npm run typecheck",
+    "npm run lint",
+    "npm run test",
+    "npm run build",
+    "npm exec playwright -- test",
+    "npx playwright test",
+    "node worker/smoke-test.mjs"
+  ]
+}
+

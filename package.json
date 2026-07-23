@@ -1,0 +1,14 @@
+{
+  "name": "shoegun-github-io-edgeops-worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "worker:doctor": "node worker/qwen-worker.mjs --doctor",
+    "worker:status": "node worker/qwen-worker.mjs --status",
+    "worker:once": "node worker/qwen-worker.mjs --once",
+    "worker:loop": "node worker/qwen-worker.mjs --loop",
+    "worker:smoke-edit": "node worker/qwen-worker.mjs --smoke-edit",
+    "worker:benchmark": "node worker/qwen-worker.mjs --benchmark"
+  }
+}

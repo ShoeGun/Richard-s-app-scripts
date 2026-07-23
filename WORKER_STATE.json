@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "status": "new",
+  "primaryModel": "qwen3:8b",
+  "fallbackModel": "qwen2.5-coder:7b",
+  "contextTokens": 16384,
+  "maxRepairCycles": 3,
+  "lastHeartbeat": null,
+  "currentTaskId": null,
+  "lastError": null,
+  "benchmark": null,
+  "taskStates": {}
+}
