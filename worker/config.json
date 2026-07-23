@@ -3,6 +3,7 @@
   "primaryModel": "qwen3:8b",
   "fallbackModel": "qwen2.5-coder:7b",
   "contextTokens": 16384,
+  "maxOutputTokens": 4096,
   "temperature": 0.15,
   "keepAlive": "2m",
   "idleSleepSeconds": 120,

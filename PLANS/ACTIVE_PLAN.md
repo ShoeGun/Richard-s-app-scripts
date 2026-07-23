@@ -2,9 +2,9 @@
 
 ## Goal
 
-Complete `T003`, the first real data vertical slice for EdgeOps Agent Studio:
-load a bundled CSV through DuckDB-Wasm inside an analytics Web Worker and return
-a structured, clone-safe schema to the React UI.
+Complete the newly narrowed `T003`: establish the DuckDB-Wasm dependency, demo
+dataset, and typed analytics worker protocol. `T003B` will implement the worker,
+and `T003C` will connect it to the UI.
 
 ## Current Context
 
@@ -20,17 +20,9 @@ proposals before applying them.
    hand-edit `package-lock.json`.
 2. Add a small deterministic CSV under `public/data/`.
 3. Define a typed request/response protocol under `src/workers/`.
-4. Initialize DuckDB-Wasm in `src/workers/analytics.worker.ts` using Vite `?url`
-   asset imports so the configured GitHub Pages base applies to worker and WASM
-   URLs.
-5. Resolve the demo dataset from an explicit base URL supplied by the main
-   thread. Do not hardcode localhost, `/data`, or a repository name.
-6. Return only structured-clone-safe schema primitives and handled error
-   responses.
-7. Add a narrow analytics client on the main thread and show loading, success,
-   schema, and error states without replacing the portfolio shell.
-8. Unit-test request correlation and surfaced worker errors. Document that
-   jsdom does not execute real nested workers/Wasm.
+4. Cover initialization, demo loading, schema inspection, request ids, and
+   structured-clone-safe error responses in the protocol.
+5. Keep this task to foundation files; do not implement the worker or UI yet.
 
 ## Expected Files
 
@@ -38,9 +30,7 @@ proposals before applying them.
 - `package-lock.json`
 - `public/data/demo.csv`
 - `src/workers/analytics.types.ts`
-- `src/workers/analytics.worker.ts`
-- `src/lib/analyticsClient.ts`
-- focused React UI/test files under `src/`
+- `src/workers/analytics.types.ts`
 - `README.md`
 
 ## Do Not Touch
@@ -54,9 +44,8 @@ proposals before applying them.
 
 ## Done Criteria
 
-- Demo CSV loads through the analytics worker.
-- Schema inspection returns plain serializable values.
-- Worker and DuckDB errors surface as handled UI states.
-- Root and `/repo/` Vite builds resolve emitted assets correctly.
+- DuckDB-Wasm is installed through the package manifest and lockfile.
+- Demo CSV is deterministic and contains useful mixed column types.
+- Protocol types cover every `T003B` request/response and serializable failures.
 - `npm run typecheck`, `npm run lint`, `npm run test`, and `npm run build` pass.
 - No push or deployment occurs.

@@ -294,6 +294,8 @@ async function ollamaGenerate(config, model, prompt, timeoutMs = 20 * 60 * 1000,
   delete options.telemetry;
   const jsonMode = options.jsonMode === true;
   delete options.jsonMode;
+  const onProgress = telemetry.onProgress;
+  delete telemetry.onProgress;
   try {
     const res = await fetch(`${config.ollamaUrl}/api/generate`, {
       method: "POST",
@@ -301,11 +303,12 @@ async function ollamaGenerate(config, model, prompt, timeoutMs = 20 * 60 * 1000,
       body: JSON.stringify({
         model,
         prompt,
-        stream: false,
+        stream: true,
         ...(jsonMode ? { format: "json" } : {}),
         keep_alive: config.keepAlive || "2m",
         options: {
            num_ctx: config.contextTokens || 16384,
+          num_predict: config.maxOutputTokens || 4096,
            temperature: config.temperature ?? 0.15,
           ...options
         }
@@ -313,7 +316,35 @@ async function ollamaGenerate(config, model, prompt, timeoutMs = 20 * 60 * 1000,
       signal: controller.signal
     });
     if (!res.ok) throw new Error(`Ollama returned ${res.status}: ${await res.text()}`);
-    const data = await res.json();
+    if (!res.body) throw new Error("Ollama returned no response body.");
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let responseText = "";
+    let finalData = {};
+    let lastProgressAt = 0;
+    for await (const chunk of res.body) {
+      buffer += decoder.decode(chunk, { stream: true });
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const data = JSON.parse(line);
+        if (data.error) throw new Error(`Ollama stream error: ${data.error}`);
+        responseText += data.response || "";
+        if (data.done) finalData = data;
+      }
+      if (onProgress && Date.now() - lastProgressAt >= 5000) {
+        lastProgressAt = Date.now();
+        await onProgress({ outputChars: responseText.length });
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) {
+      const data = JSON.parse(buffer);
+      if (data.error) throw new Error(`Ollama stream error: ${data.error}`);
+      responseText += data.response || "";
+      if (data.done) finalData = data;
+    }
     await recordInference(RUNTIME_DIR, {
       provider: "ollama",
       model,
@@ -323,14 +354,14 @@ async function ollamaGenerate(config, model, prompt, timeoutMs = 20 * 60 * 1000,
       durationMs: Date.now() - startedAt,
       status: "ok",
       usage: {
-        promptTokens: data.prompt_eval_count,
-        completionTokens: data.eval_count,
+        promptTokens: finalData.prompt_eval_count,
+        completionTokens: finalData.eval_count,
         inputChars: prompt.length,
-        outputChars: String(data.response || "").length,
-        exact: Number.isFinite(data.prompt_eval_count) && Number.isFinite(data.eval_count)
+        outputChars: responseText.length,
+        exact: Number.isFinite(finalData.prompt_eval_count) && Number.isFinite(finalData.eval_count)
       }
     });
-    return data.response || "";
+    return responseText;
   } catch (error) {
     await recordInference(RUNTIME_DIR, {
       provider: "ollama",
@@ -1082,7 +1113,12 @@ async function processTask(task, config, state) {
       telemetry: {
         agent: taskState.repairCycles > 0 ? "local-repairer" : "local-implementer",
         phase: taskState.repairCycles > 0 ? "repair" : "implementation",
-        taskId: task.id
+        taskId: task.id,
+        onProgress: async ({ outputChars }) => {
+          taskState.lease.lastProgressAt = new Date().toISOString();
+          taskState.lease.outputChars = outputChars;
+          await saveState(state);
+        }
       }
     });
     await appendFile(DETAIL_LOG, `\n[model:${model}] task ${task.id}\n${raw}\n`);

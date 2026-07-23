@@ -23,17 +23,35 @@ The worker reads the JSON block below as the durable task queue. Keep tasks boun
   },
   {
     "id": "T003",
-    "title": "DuckDB-Wasm dataset loading",
+    "title": "DuckDB protocol and demo dataset",
     "dependsOn": ["T001"],
-    "objective": "Add DuckDB-Wasm in an analytics Web Worker and load at least one included demo dataset with schema inspection.",
-    "focus": ["src", "public", "README.md"],
+    "objective": "Add the DuckDB-Wasm dependency, a small deterministic demo CSV, and the typed request/response protocol for the analytics worker. Do not implement UI integration in this task.",
+    "focus": ["package.json", "package-lock.json", "src/workers", "public/data", "README.md"],
     "validation": ["npm run typecheck", "npm run lint", "npm run test", "npm run build"],
-    "acceptance": ["Demo dataset loads through worker", "Schema inspection works", "DuckDB errors are handled"]
+    "acceptance": ["DuckDB-Wasm is installed through the package manifest", "Demo CSV has deterministic mixed-type rows", "Typed protocol covers initialization, dataset loading, schema inspection, and serializable errors"]
+  },
+  {
+    "id": "T003B",
+    "title": "DuckDB-Wasm analytics worker",
+    "dependsOn": ["T003"],
+    "objective": "Implement DuckDB-Wasm initialization and demo dataset schema inspection inside an analytics Web Worker using Vite-managed worker and Wasm asset URLs.",
+    "focus": ["src/workers", "README.md"],
+    "validation": ["npm run typecheck", "npm run lint", "npm run test", "npm run build"],
+    "acceptance": ["DuckDB runs off the main thread", "Worker and Wasm assets use Vite base-aware URLs", "Demo dataset loads and schema inspection returns clone-safe primitives", "Initialization and query failures return typed handled errors"]
+  },
+  {
+    "id": "T003C",
+    "title": "Analytics client and schema UI",
+    "dependsOn": ["T003B"],
+    "objective": "Add a narrow main-thread analytics client, connect the demo dataset workflow to the portfolio UI, and render loading, schema, and handled error states.",
+    "focus": ["src/lib", "src/App.tsx", "src/App.test.tsx", "src/index.css", "README.md"],
+    "validation": ["npm run typecheck", "npm run lint", "npm run test", "npm run build"],
+    "acceptance": ["Client correlates worker responses by request id", "UI can load the demo dataset and display its schema", "Loading and error states are accessible", "Tests cover request correlation and surfaced worker errors"]
   },
   {
     "id": "T004",
     "title": "Deterministic analysis without LLM",
-    "dependsOn": ["T003"],
+    "dependsOn": ["T003C"],
     "objective": "Implement validated deterministic filtering, grouping, aggregation, sorting, limits, and chart selection without model involvement.",
     "focus": ["src"],
     "validation": ["npm run typecheck", "npm run lint", "npm run test", "npm run build"],
@@ -78,7 +96,7 @@ The worker reads the JSON block below as the durable task queue. Keep tasks boun
   {
     "id": "T009",
     "title": "Open-data catalog",
-    "dependsOn": ["T003"],
+    "dependsOn": ["T003C"],
     "objective": "Add a curated public/no-secret data catalog with suggested analytical questions and reliable browser-accessible sources. Validate asset and data URLs from the GitHub Pages production origin, not localhost alone.",
     "focus": ["src", "public", "README.md"],
     "validation": ["npm run typecheck", "npm run lint", "npm run test", "npm run build"],
@@ -87,7 +105,7 @@ The worker reads the JSON block below as the durable task queue. Keep tasks boun
   {
     "id": "T010",
     "title": "Upload workflow",
-    "dependsOn": ["T003", "T004"],
+    "dependsOn": ["T003C", "T004"],
     "objective": "Support CSV and JSON upload, and Parquet upload when practical, with schema inspection and local-only data handling.",
     "focus": ["src"],
     "validation": ["npm run typecheck", "npm run lint", "npm run test", "npm run build"],
