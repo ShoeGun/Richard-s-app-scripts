@@ -5,6 +5,9 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { commitPathsForProposal, resolveRepositoryPath, validateProposal } from "./lib/proposal.mjs";
+import { recordInference } from "./lib/telemetry.mjs";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const STATE_PATH = path.join(ROOT, "WORKER_STATE.json");
@@ -22,6 +25,7 @@ const ESCALATION_INBOX = path.join(ESCALATIONS_DIR, "inbox");
 const ESCALATION_PROCESSED = path.join(ESCALATIONS_DIR, "processed");
 const ESCALATION_LOCAL = path.join(ESCALATIONS_DIR, "local");
 const ESCALATION_FRONTIER = path.join(ESCALATIONS_DIR, "frontier");
+const RUNTIME_DIR = path.join(__dirname, "runtime");
 
 const argv = new Set(process.argv.slice(2));
 
@@ -65,6 +69,7 @@ function defaultState(config = {}) {
     maxRepairCycles: config.maxRepairCycles || 3,
     lastHeartbeat: null,
     currentTaskId: null,
+    workerPid: null,
     lastError: null,
     benchmark: null,
     taskStates: {}
@@ -97,8 +102,17 @@ async function saveState(state) {
 async function setStatus(status, error) {
   const config = await loadConfig();
   const state = await loadState(config);
+  for (const taskState of Object.values(state.taskStates || {})) {
+    if (taskState.status !== "running") continue;
+    taskState.status = "pending";
+    taskState.interruptions = (taskState.interruptions || 0) + 1;
+    taskState.lastInterruptedAt = new Date().toISOString();
+    taskState.lastError = `Task returned to pending because the worker was ${status}.`;
+    delete taskState.lease;
+  }
   state.status = status;
   state.currentTaskId = null;
+  state.workerPid = process.pid;
   state.lastError = error;
   await saveState(state);
   console.log(`Worker status set to ${status}.`);
@@ -123,15 +137,7 @@ async function readOptionalText(filePath, maxChars = 30000) {
 }
 
 function relativeSafePath(inputPath) {
-  if (!inputPath || typeof inputPath !== "string") throw new Error("Missing path.");
-  const normalized = inputPath.replaceAll("\\", "/").replace(/^\/+/, "");
-  if (normalized.includes("..") || path.isAbsolute(inputPath)) {
-    throw new Error(`Unsafe path outside repository: ${inputPath}`);
-  }
-  const absolute = path.resolve(ROOT, normalized);
-  if (!absolute.toLowerCase().startsWith(ROOT.toLowerCase() + path.sep)) {
-    throw new Error(`Unsafe path outside repository: ${inputPath}`);
-  }
+  const { normalized, absolute } = resolveRepositoryPath(ROOT, inputPath);
   const denied = [".git/", ".worker-control/", "node_modules/", "worker/logs/"];
   const lowered = normalized.toLowerCase();
   if (denied.some((prefix) => lowered.startsWith(prefix))) {
@@ -177,22 +183,11 @@ async function listTree() {
     }
   }
   await walk(ROOT);
-  return files.slice(0, 180).join("\n");
+  return files.slice(0, 180).join("\n").slice(0, 6000);
 }
 
 async function readFocusFiles(task) {
-  const files = new Set([
-    "SPEC.md",
-    "ARCHITECTURE.md",
-    "AGENTS.md",
-    "DECISIONS.md",
-    "BLOCKERS.md",
-    "WORKER_STATE.json",
-    "PLANS/ACTIVE_PLAN.md",
-    "PLANS/TEST_PATTERNS.md",
-    "PLANS/GUARDRAILS.md",
-    "package.json"
-  ]);
+  const files = new Set();
   for (const focus of task.focus || []) {
     const safe = relativeSafePath(focus);
     if (!existsSync(safe.absolute)) continue;
@@ -200,25 +195,36 @@ async function readFocusFiles(task) {
     if (stat.isFile()) files.add(safe.normalized);
     if (stat.isDirectory()) {
       const children = await fs.readdir(safe.absolute, { withFileTypes: true });
-      for (const child of children.slice(0, 30)) {
+      for (const child of children.slice(0, 24)) {
         if (child.isFile()) files.add(path.posix.join(safe.normalized, child.name));
       }
     }
   }
+  for (const file of [
+    "SPEC.md",
+    "ARCHITECTURE.md",
+    "AGENTS.md",
+    "DECISIONS.md",
+    "package.json"
+  ]) files.add(file);
 
   const chunks = [];
+  let remainingChars = 18000;
   for (const file of files) {
+    if (remainingChars <= 0) break;
     try {
       const safe = relativeSafePath(file);
       const stat = await fs.stat(safe.absolute);
       if (stat.size > 50000) continue;
       const content = await fs.readFile(safe.absolute, "utf8");
-      chunks.push(`--- ${file} ---\n${content.slice(0, 18000)}`);
+      const chunk = `--- ${file} ---\n${content.slice(0, Math.min(9000, remainingChars))}`;
+      chunks.push(chunk);
+      remainingChars -= chunk.length;
     } catch {
       // Ignore unreadable focus files.
     }
   }
-  return chunks.join("\n\n").slice(0, 70000);
+  return chunks.join("\n\n");
 }
 
 async function gpuBusy(config) {
@@ -279,6 +285,12 @@ function execWithInput(command, args = [], input = "", timeoutMs = 30000) {
 async function ollamaGenerate(config, model, prompt, timeoutMs = 20 * 60 * 1000, extraOptions = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const startedAt = Date.now();
+  const telemetry = extraOptions.telemetry || {};
+  const options = { ...extraOptions };
+  delete options.telemetry;
+  const jsonMode = options.jsonMode === true;
+  delete options.jsonMode;
   try {
     const res = await fetch(`${config.ollamaUrl}/api/generate`, {
       method: "POST",
@@ -287,18 +299,47 @@ async function ollamaGenerate(config, model, prompt, timeoutMs = 20 * 60 * 1000,
         model,
         prompt,
         stream: false,
+        ...(jsonMode ? { format: "json" } : {}),
         keep_alive: config.keepAlive || "2m",
         options: {
-          num_ctx: config.contextTokens || 16384,
-          temperature: config.temperature ?? 0.15,
-          ...extraOptions
+           num_ctx: config.contextTokens || 16384,
+           temperature: config.temperature ?? 0.15,
+          ...options
         }
       }),
       signal: controller.signal
     });
     if (!res.ok) throw new Error(`Ollama returned ${res.status}: ${await res.text()}`);
     const data = await res.json();
+    await recordInference(RUNTIME_DIR, {
+      provider: "ollama",
+      model,
+      agent: telemetry.agent || "local-worker",
+      phase: telemetry.phase || "generation",
+      taskId: telemetry.taskId || null,
+      durationMs: Date.now() - startedAt,
+      status: "ok",
+      usage: {
+        promptTokens: data.prompt_eval_count,
+        completionTokens: data.eval_count,
+        inputChars: prompt.length,
+        outputChars: String(data.response || "").length,
+        exact: Number.isFinite(data.prompt_eval_count) && Number.isFinite(data.eval_count)
+      }
+    });
     return data.response || "";
+  } catch (error) {
+    await recordInference(RUNTIME_DIR, {
+      provider: "ollama",
+      model,
+      agent: telemetry.agent || "local-worker",
+      phase: telemetry.phase || "generation",
+      taskId: telemetry.taskId || null,
+      durationMs: Date.now() - startedAt,
+      status: "error",
+      usage: { inputChars: prompt.length, outputChars: 0, exact: false }
+    }).catch(() => {});
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
@@ -357,27 +398,24 @@ function runCommand(command, timeoutMs = 10 * 60 * 1000) {
   });
 }
 
-async function applyEdits(edits) {
-  if (!Array.isArray(edits)) throw new Error("Model JSON must include edits array.");
-  const planned = [];
-  for (const edit of edits) {
-    const safe = relativeSafePath(edit.path);
-    if (typeof edit.content !== "string") throw new Error(`Edit for ${edit.path} is missing string content.`);
-    validateEditContent(safe.normalized, edit.content);
-    planned.push({ edit, safe });
-  }
-
+async function applyEdits(edits, backupPaths = edits.map((edit) => edit.path)) {
   const backups = [];
-  for (const { edit, safe } of planned) {
+  for (const filePath of backupPaths) {
+    const safe = relativeSafePath(filePath);
     const existed = existsSync(safe.absolute);
+    if (existed && !(await fs.stat(safe.absolute)).isFile()) {
+      throw new Error(`Backup path is not a file: ${safe.normalized}`);
+    }
     backups.push({
       path: safe.normalized,
       absolute: safe.absolute,
       existed,
       content: existed ? await fs.readFile(safe.absolute, "utf8") : null
     });
-    await fs.mkdir(path.dirname(safe.absolute), { recursive: true });
-    await fs.writeFile(safe.absolute, edit.content, "utf8");
+  }
+  for (const edit of edits) {
+    await fs.mkdir(path.dirname(edit.absolute), { recursive: true });
+    await fs.writeFile(edit.absolute, edit.content, "utf8");
   }
   return backups;
 }
@@ -393,34 +431,11 @@ async function restoreEditBackups(backups) {
   }
 }
 
-function validateEditContent(relativePath, content) {
-  const trimmed = content.trim();
-  const placeholderPatterns = [
-    /^see attached/i,
-    /add your .* here/i,
-    /keep existing .* styles/i,
-    /keep existing .* components/i,
-    /remove this file or replace/i,
-    /\.\.\. keep existing/i,
-    /\{\s*\/\*\s*add your/i
-  ];
-  const matched = placeholderPatterns.find((pattern) => pattern.test(trimmed));
-  if (matched) {
-    throw new Error(`Rejected placeholder edit for ${relativePath}: ${matched}`);
-  }
-  if (relativePath.endsWith(".json")) {
-    try {
-      JSON.parse(content);
-    } catch (error) {
-      throw new Error(`Rejected invalid JSON for ${relativePath}: ${error.message}`);
-    }
-  }
-  if (relativePath === "package.json") {
-    try {
-      JSON.parse(content);
-    } catch (error) {
-      throw new Error(`Rejected invalid package.json: ${error.message}`);
-    }
+async function assertEditTargetsClean(paths) {
+  if (!paths.length) throw new Error("Proposal has no commit paths.");
+  const status = await execText("git", ["status", "--porcelain", "--untracked-files=all", "--", ...paths], 30000);
+  if (status.trim()) {
+    throw new Error(`Task edit targets already have uncommitted changes:\n${status.trim()}`);
   }
 }
 
@@ -437,15 +452,26 @@ async function runValidation(commands, config) {
   return { ok: true, results };
 }
 
-async function gitDiffSummary() {
-  const status = await execText("git", ["status", "--short"], 30000).catch((error) => error.stdout || error.message);
-  const stat = await execText("git", ["diff", "--stat"], 30000).catch((error) => error.stdout || error.message);
-  const diff = await execText("git", ["diff", "--", "."], 30000).catch((error) => error.stdout || error.message);
-  return { status, stat, diff: diff.slice(0, 60000) };
+async function gitDiffSummary(paths = []) {
+  const pathArgs = paths.length ? ["--", ...paths] : ["--", "."];
+  const statusArgs = paths.length ? ["status", "--short", "--untracked-files=all", "--", ...paths] : ["status", "--short"];
+  const status = await execText("git", statusArgs, 30000).catch((error) => error.stdout || error.message);
+  const stat = await execText("git", ["diff", "--stat", ...pathArgs], 30000).catch((error) => error.stdout || error.message);
+  let diff = await execText("git", ["diff", ...pathArgs], 30000).catch((error) => error.stdout || error.message);
+  const untracked = status.split(/\r?\n/)
+    .filter((line) => line.startsWith("?? "))
+    .map((line) => line.slice(3).trim());
+  for (const file of untracked) {
+    const safe = relativeSafePath(file);
+    const content = await readOptionalText(safe.absolute, 30000);
+    diff += `\n--- /dev/null\n+++ b/${file}\n${content.split(/\r?\n/).map((line) => `+${line}`).join("\n")}\n`;
+  }
+  return { status, stat, diff: diff.slice(0, 80000) };
 }
 
-async function reviewDiff(config, model, task, diffSummary) {
-  if (!diffSummary.status.trim()) return { pass: true, notes: "No file changes." };
+async function reviewDiff(config, task, diffSummary) {
+  if (!diffSummary.status.trim()) return { pass: false, notes: "Task produced no scoped file changes.", risk: "high" };
+  const model = config.routing?.reviewerModel || config.reviewModel || config.fallbackModel || config.primaryModel;
   const prompt = `You are reviewing a local Git diff for a bounded autonomous worker task.
 
 Task:
@@ -459,26 +485,29 @@ ${diffSummary.diff}
 
 Return only JSON:
 {"pass":true|false,"notes":"short reason","risk":"low|medium|high"}`;
-  const response = await ollamaGenerate(config, model, prompt, 10 * 60 * 1000);
+  const response = await ollamaGenerate(config, model, prompt, 10 * 60 * 1000, {
+    jsonMode: true,
+    telemetry: { agent: "local-reviewer", phase: "diff-review", taskId: task.id }
+  });
   const review = extractJsonObject(response);
   return { pass: review.pass === true, notes: String(review.notes || ""), risk: String(review.risk || "unknown") };
 }
 
-async function commitTask(task) {
-  const status = await execText("git", ["status", "--short"], 30000);
-  if (!status.trim()) return "No changes to commit.";
-  await execText("git", ["add", "-A"], 30000);
+async function commitTask(task, paths) {
+  await execText("git", ["add", "--", ...paths], 30000);
+  const staged = await execText("git", ["diff", "--cached", "--name-only", "--", ...paths], 30000);
+  if (!staged.trim()) throw new Error("No scoped changes were staged for the task.");
   const message = `${task.id}: ${task.title}`;
   await execText("git", ["commit", "-m", message], 120000);
   return message;
 }
 
 async function readOperatorContext(taskId) {
-  const escalationAnswer = await readOptionalText(path.join(ESCALATION_INBOX, `${taskId}.md`), 20000);
+  const escalationAnswer = await readOptionalText(path.join(ESCALATION_INBOX, `${taskId}.md`), 6000);
   return {
-    activePlan: await readOptionalText(path.join(PLANS_DIR, "ACTIVE_PLAN.md"), 24000),
-    testPatterns: await readOptionalText(path.join(PLANS_DIR, "TEST_PATTERNS.md"), 16000),
-    guardrails: await readOptionalText(path.join(PLANS_DIR, "GUARDRAILS.md"), 16000),
+    activePlan: await readOptionalText(path.join(PLANS_DIR, "ACTIVE_PLAN.md"), 5000),
+    testPatterns: await readOptionalText(path.join(PLANS_DIR, "TEST_PATTERNS.md"), 3000),
+    guardrails: await readOptionalText(path.join(PLANS_DIR, "GUARDRAILS.md"), 3000),
     escalationAnswer
   };
 }
@@ -851,7 +880,8 @@ You are the local escalation model "${channel.id}" (${channel.model}).
 Return concise reviewer guidance only. Do not emit JSON edits. Focus on how the next worker attempt should recover safely.`;
   const answer = await ollamaGenerate(config, channel.model, prompt, 20 * 60 * 1000, {
     num_ctx: channel.contextTokens || config.contextTokens || 16384,
-    temperature: channel.temperature ?? 0.1
+    temperature: channel.temperature ?? 0.1,
+    telemetry: { agent: channel.id, phase: "escalation", taskId: task.id }
   });
   await unloadModel(config, channel.model);
   await fs.mkdir(ESCALATION_LOCAL, { recursive: true });
@@ -900,6 +930,16 @@ Rules:
   }
   const answer = (await readOptionalText(outputPath, 40000)) || result.stdout;
   if (!answer.trim()) throw new Error(`Codex escalation ${channel.id} produced an empty answer.`);
+  await recordInference(RUNTIME_DIR, {
+    provider: "codex",
+    model: channel.model,
+    agent: channel.id,
+    phase: "escalation",
+    taskId: task.id,
+    durationMs: 0,
+    status: "ok",
+    usage: { inputChars: prompt.length, outputChars: answer.length, exact: false }
+  });
   return { answer, answerPath: outputPath };
 }
 
@@ -1015,10 +1055,17 @@ async function processTask(task, config, state) {
   taskState.startedAt = taskState.startedAt || new Date().toISOString();
   state.currentTaskId = task.id;
   state.status = "running";
+  state.workerPid = process.pid;
+  taskState.lease = {
+    pid: process.pid,
+    acquiredAt: new Date().toISOString()
+  };
   state.taskStates[task.id] = taskState;
   await saveState(state);
 
-  const model = taskState.repairCycles > 0 ? state.fallbackModel : state.primaryModel;
+  const model = taskState.repairCycles > 0
+    ? (config.routing?.repairModel || state.fallbackModel)
+    : (config.routing?.implementerModel || state.primaryModel);
   await log(`Starting task ${task.id} with ${model}`);
 
   let editBackups = [];
@@ -1027,23 +1074,33 @@ async function processTask(task, config, state) {
     const focusFiles = await readFocusFiles(task);
     const operatorContext = await readOperatorContext(task.id);
     const prompt = buildTaskPrompt(task, state, tree, focusFiles, operatorContext);
-    const raw = await ollamaGenerate(config, model, prompt);
+    const raw = await ollamaGenerate(config, model, prompt, 20 * 60 * 1000, {
+      jsonMode: true,
+      telemetry: {
+        agent: taskState.repairCycles > 0 ? "local-repairer" : "local-implementer",
+        phase: taskState.repairCycles > 0 ? "repair" : "implementation",
+        taskId: task.id
+      }
+    });
     await appendFile(DETAIL_LOG, `\n[model:${model}] task ${task.id}\n${raw}\n`);
     const action = extractJsonObject(raw);
-    editBackups = await applyEdits(action.edits || []);
+    const proposal = await validateProposal({ root: ROOT, task, action, config });
+    const commitPaths = commitPathsForProposal(proposal);
+    await assertEditTargetsClean(commitPaths);
+    editBackups = await applyEdits(proposal.edits, commitPaths);
 
-    const modelCommands = Array.isArray(action.commands) ? action.commands : [];
+    const modelCommands = proposal.commands;
     const commands = [...modelCommands, ...(task.validation || [])];
     const validation = await runValidation([...new Set(commands)], config);
     if (!validation.ok) {
       throw new Error(`Validation failed: ${JSON.stringify(validation.results.at(-1), null, 2)}`);
     }
 
-    const diffSummary = await gitDiffSummary();
-    const review = await reviewDiff(config, model, task, diffSummary);
+    const diffSummary = await gitDiffSummary(commitPaths);
+    const review = await reviewDiff(config, task, diffSummary);
     if (!review.pass) throw new Error(`Diff review failed: ${review.notes}`);
 
-    const commit = await commitTask(task);
+    const commit = await commitTask(task, commitPaths);
     taskState.status = "completed";
     taskState.completedAt = new Date().toISOString();
     taskState.lastError = null;
@@ -1051,7 +1108,9 @@ async function processTask(task, config, state) {
     taskState.review = review;
     state.currentTaskId = null;
     state.status = "idle";
+    state.workerPid = process.pid;
     state.lastError = null;
+    delete taskState.lease;
     await saveState(state);
     await log(`Completed task ${task.id}`, { commit, review });
   } catch (error) {
@@ -1064,6 +1123,8 @@ async function processTask(task, config, state) {
     taskState.lastError = String(error.stack || error.message || error).slice(0, 8000);
     state.lastError = taskState.lastError;
     state.currentTaskId = null;
+    state.workerPid = process.pid;
+    delete taskState.lease;
 
     if (taskState.repairCycles >= (state.maxRepairCycles || 3)) {
       if (config.escalation?.enabled) {
@@ -1091,9 +1152,44 @@ async function processTask(task, config, state) {
   }
 }
 
+function processIsAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function recoverInterruptedTask(state) {
+  const running = Object.entries(state.taskStates || {}).filter(([, taskState]) => taskState.status === "running");
+  let recovered = false;
+  for (const [taskId, taskState] of running) {
+    const leasePid = taskState?.lease?.pid || state.workerPid;
+    if (taskId === state.currentTaskId && (leasePid === process.pid || processIsAlive(leasePid))) continue;
+    taskState.status = "pending";
+    taskState.interruptions = (taskState.interruptions || 0) + 1;
+    taskState.lastInterruptedAt = new Date().toISOString();
+    taskState.lastError = `Recovered interrupted worker lease from process ${leasePid || "unknown"}; retry was not charged as a model failure.`;
+    delete taskState.lease;
+    state.lastError = taskState.lastError;
+    await log(`Recovered interrupted task ${taskId}`, { previousPid: leasePid || null });
+    recovered = true;
+  }
+  if (!recovered) return false;
+  state.status = "idle";
+  state.currentTaskId = null;
+  state.workerPid = process.pid;
+  await saveState(state);
+  return true;
+}
+
 async function runOnce() {
   const config = await loadConfig();
   const state = await loadState(config);
+  await recoverInterruptedTask(state);
+  state.workerPid = process.pid;
 
   if (existsSync(STOP_FILE)) return setStatus("stopped", "Stop file exists.");
   if (existsSync(PAUSE_FILE)) return setStatus("paused", "Pause file exists.");

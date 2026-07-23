@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>EdgeOps Control Plane</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">LOCAL AGENT ORCHESTRATION</p>
+        <h1>EdgeOps Control Plane</h1>
+      </div>
+      <div class="topbar-actions" role="group" aria-label="Worker controls">
+        <button class="control secondary" data-action="pause" title="Pause worker">Ⅱ <span>Pause</span></button>
+        <button class="control secondary" data-action="stop" title="Stop worker">■ <span>Stop</span></button>
+        <button class="control primary" data-action="resume" title="Resume worker">▶ <span>Resume</span></button>
+      </div>
+    </header>
+
+    <main>
+      <section class="status-strip" aria-label="Runtime status">
+        <div>
+          <span class="label">Worker</span>
+          <strong id="worker-status">Connecting</strong>
+        </div>
+        <div>
+          <span class="label">Active task</span>
+          <strong id="active-task">None</strong>
+        </div>
+        <div>
+          <span class="label">Total tokens</span>
+          <strong id="total-tokens">0</strong>
+        </div>
+        <div>
+          <span class="label">Local share</span>
+          <strong id="local-share">100%</strong>
+        </div>
+        <div>
+          <span class="label">Last sync</span>
+          <strong id="last-sync">Never</strong>
+        </div>
+      </section>
+
+      <nav class="tabs" aria-label="Control plane views">
+        <button class="tab active" data-view="overview">Overview</button>
+        <button class="tab" data-view="tasks">Task graph</button>
+        <button class="tab" data-view="telemetry">Telemetry</button>
+        <button class="tab" data-view="operator">Operator context</button>
+      </nav>
+
+      <section class="view active" id="view-overview">
+        <div class="overview-grid">
+          <section class="panel flow-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">EXECUTION PATH</p>
+                <h2>Local-first routing</h2>
+              </div>
+              <button class="icon-button" id="sync-button" title="Sync Paperclip" aria-label="Sync Paperclip">↻</button>
+            </div>
+            <div id="routing-flow" class="routing-flow"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">RUNTIME</p>
+                <h2>Service health</h2>
+              </div>
+              <span class="live-mark"><i></i> live</span>
+            </div>
+            <div id="service-list" class="service-list"></div>
+          </section>
+        </div>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">WORK IN MOTION</p>
+              <h2>Current pipeline</h2>
+            </div>
+            <span id="pipeline-summary" class="muted"></span>
+          </div>
+          <div id="pipeline" class="pipeline"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">LATEST ACTIVITY</p>
+              <h2>Inference timeline</h2>
+            </div>
+            <span class="legend"><i class="exact"></i> exact <i class="estimated"></i> estimated</span>
+          </div>
+          <div id="timeline" class="timeline"></div>
+        </section>
+      </section>
+
+      <section class="view" id="view-tasks">
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">DEPENDENCY-AWARE QUEUE</p>
+              <h2>Task graph</h2>
+            </div>
+            <span id="task-count" class="muted"></span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Task</th><th>Status</th><th>Depends on</th><th>Attempts</th><th>Tokens</th><th>Escalation</th></tr>
+              </thead>
+              <tbody id="task-table"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="view-telemetry">
+        <div class="overview-grid">
+          <section class="panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">BY MODEL</p><h2>Token consumption</h2></div>
+            </div>
+            <div id="model-usage" class="usage-list"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">BY AGENT ROLE</p><h2>Work allocation</h2></div>
+            </div>
+            <div id="agent-usage" class="usage-list"></div>
+          </section>
+        </div>
+        <section class="panel">
+          <div class="panel-heading">
+            <div><p class="eyebrow">ESCALATION POLICY</p><h2>Editable ladder</h2></div>
+            <button class="control primary compact" id="save-ladder">Save order</button>
+          </div>
+          <div id="ladder-editor" class="ladder-editor"></div>
+        </section>
+      </section>
+
+      <section class="view" id="view-operator">
+        <section class="panel operator-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">HUMAN INTENT</p>
+              <h2>Plan, tests, and guardrails</h2>
+            </div>
+            <button class="control primary compact" id="save-context">Save context</button>
+          </div>
+          <div class="editor-tabs" role="tablist">
+            <button class="editor-tab active" data-editor="activePlan">Active plan</button>
+            <button class="editor-tab" data-editor="testPatterns">Test patterns</button>
+            <button class="editor-tab" data-editor="guardrails">Guardrails</button>
+          </div>
+          <textarea id="activePlan" class="context-editor active" spellcheck="false" aria-label="Active plan"></textarea>
+          <textarea id="testPatterns" class="context-editor" spellcheck="false" aria-label="Test patterns"></textarea>
+          <textarea id="guardrails" class="context-editor" spellcheck="false" aria-label="Guardrails"></textarea>
+        </section>
+      </section>
+    </main>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

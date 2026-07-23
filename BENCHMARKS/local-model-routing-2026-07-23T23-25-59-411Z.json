@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "capturedAt": "2026-07-23T23:25:59.411Z",
+  "host": "RTX 3070 8GB / 64GB RAM",
+  "contextTokens": 8192,
+  "temperature": 0,
+  "results": [
+    {
+      "model": "qwen3:32b",
+      "cases": [
+        {
+          "id": "seeded-review",
+          "text": "{\"pass\":true,\"notes\":\"Changes are within allowed focus areas\",\"risk\":\"low\"}",
+          "durationMs": 22552,
+          "promptTokens": 145,
+          "completionTokens": 19,
+          "promptTokensPerSecond": 90.37004351473405,
+          "completionTokensPerSecond": 2.5413980364356226,
+          "score": {
+            "points": 0,
+            "maxPoints": 2,
+            "details": {
+              "pass": true,
+              "notes": "Changes are within allowed focus areas",
+              "risk": "low",
+              "caught": false
+            }
+          }
+        }
+      ],
+      "points": 0,
+      "maxPoints": 5,
+      "errors": [
+        {
+          "id": "focused-proposal",
+          "error": "fetch failed"
+        }
+      ]
+    }
+  ]
+}

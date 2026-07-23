@@ -1,6 +1,6 @@
 # Test Patterns
 
-Required command sequence for T001:
+Required command sequence for `T003`:
 
 ```powershell
 npm install
@@ -8,20 +8,35 @@ npm run typecheck
 npm run lint
 npm run test
 npm run build
+$env:VITE_BASE_PATH='/repo/'
+npm run build
+Remove-Item Env:VITE_BASE_PATH
 ```
 
-Expected failure patterns to treat as blockers:
+Worker-level regression checks:
 
-- invalid `package.json`
-- placeholder edit text in any source file
-- blank starter portfolio replacing existing content
-- missing ESLint config for `npm run lint`
-- test script without at least one meaningful smoke/render test
-- Vite base hardcoded to a project path instead of default `/`
-- GitHub Pages workflow uploading anything other than `dist`
+```powershell
+npm run test:worker
+node worker/qwen-worker.mjs --doctor
+```
 
-Future production-path checks:
+Treat these as blockers:
 
-- verify default Pages/custom-domain base `/`
-- verify `VITE_BASE_PATH=/repo/ npm run build` works for project-repo paths
-- validate model, dataset, worker, and WASM URLs from the deployed Pages origin, not localhost only
+- model proposal uses `src` or another directory as a file path;
+- proposal edits `.github/`, `worker/`, task ledgers, or files outside `T003`
+  focus;
+- hardcoded localhost, `/data`, or repository-name asset paths;
+- Arrow objects, database handles, `Error` instances, or unnormalized `bigint`
+  values sent through `postMessage`;
+- main-thread DuckDB execution;
+- tests claiming jsdom proves real Wasm/worker loading;
+- weakened typecheck, lint, test, build, or Pages workflow gates;
+- placeholder file content or hand-authored `package-lock.json`.
+
+Manual browser evidence after implementation:
+
+- analytics worker script returns 200;
+- selected DuckDB worker and Wasm assets return 200;
+- `data/demo.csv` returns 200 under both `/` and `/repo/` base paths;
+- schema rows render;
+- invalid dataset URL produces a handled UI error.

@@ -2,7 +2,7 @@
 
 ## Autonomous Worker
 
-`worker/qwen-worker.mjs` is a project-local autonomous worker for `ShoeGun/ShoeGun.github.io`. It uses Ollama on `http://127.0.0.1:11434`, reads the repository memory files, selects one ready task from `TASKS.md`, asks local Qwen for bounded full-file edits, validates the result with allowlisted commands, reviews the Git diff, and commits successful checkpoints.
+`worker/qwen-worker.mjs` is the project-local execution runtime for `ShoeGun/ShoeGun.github.io`. It uses Ollama on `http://127.0.0.1:11434`, reads the repository memory files, selects one dependency-ready task from `TASKS.md`, asks a local model for bounded full-file edits, validates the proposal before touching disk, runs allowlisted commands, obtains an independent local review, and commits only the files owned by that proposal.
 
 The worker is intentionally simple:
 
@@ -12,16 +12,48 @@ The worker is intentionally simple:
 - No shell metacharacter command chains.
 - Persistent compact state in `WORKER_STATE.json`.
 - Detailed runtime logs in ignored `worker/logs/`.
+- Exact Ollama token counters and labeled frontier estimates in ignored `worker/runtime/`.
 - PowerShell controls for start, pause, resume, stop, status, and doctor.
 - Windows Scheduled Task persistence at login.
+- Interrupted-task lease recovery without charging a model repair cycle.
+- Task-focus enforcement: application tasks cannot edit orchestration files or unrelated workflow/config paths.
+- Scoped commits: the worker never runs `git add -A`.
 
 Primary model: `qwen3:8b`.
 
-Fallback model: `qwen2.5-coder:7b`.
+Repair and independent review model: `qwen2.5-coder:14b`.
 
 Initial context target: 16384 tokens.
 
 The worker pauses when known GPU lock files exist or when GPU compute processes such as Voicebox or ComfyUI are active. It does not cancel those processes.
+
+## Orchestration Modules
+
+The platform has one authoritative execution ledger and several projections:
+
+- Agentic OS provides governance, plans, guardrails, test patterns, and handoff/compaction rules.
+- `TASKS.md` plus `WORKER_STATE.json` are the local execution ledger.
+- `worker/lib/proposal.mjs` owns proposal validation, task focus, protected paths, and commit scope.
+- `worker/lib/telemetry.mjs` owns inference event and aggregate token accounting.
+- `worker/qwen-worker.mjs` owns task selection, model invocation, validation, repair, escalation, and local commits.
+- `worker/loop-bridge.mjs` projects the loop and each task into Paperclip. Paperclip is a management view, not a competing task-state database.
+- `worker/control-plane.mjs` serves the loopback dashboard at `http://127.0.0.1:3210`.
+
+The dashboard can pause/resume/stop the worker, trigger a Paperclip sync, edit the operator plan/test patterns/guardrails, inspect the task graph and token ledger, and reorder enabled escalation channels. It is bound to loopback and rejects cross-origin mutation requests.
+
+## Local-First Routing
+
+The evidence-based default route is:
+
+1. `qwen3:8b` performs the first bounded implementation attempt.
+2. `qwen2.5-coder:14b` performs repairs and independent diff review.
+3. After the local repair budget is exhausted, `qwen2.5-coder:14b` receives one compact read-only escalation packet.
+4. GPT 5.4 receives a sparse guidance-only packet if local recovery fails.
+5. GPT 5.6 is used only if the post-5.4 local retry still fails.
+
+Other installed local models remain configurable experiments. A model is promoted only after the repository benchmark demonstrates valid structured output, focus compliance, and regression detection. "Uncensored" or "abliterated" is not a quality tier.
+
+Frontier models never edit the repository in this loop. They return compact guidance, and a local worker applies and validates any resulting change.
 
 ## Portfolio App Target
 

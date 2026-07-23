@@ -167,6 +167,20 @@ async function collectSnapshot() {
     if (["completed", "blocked", "running"].includes(status)) return false;
     return (task.dependsOn || []).every((dep) => taskStatus(workerState, dep) === "completed");
   });
+  const items = tasks.map((task) => {
+    const taskState = workerState.taskStates?.[task.id] || {};
+    return {
+      id: task.id,
+      title: task.title,
+      objective: sanitize(task.objective || ""),
+      dependsOn: task.dependsOn || [],
+      status: taskStatus(workerState, task.id),
+      attempts: taskState.attempts || 0,
+      repairCycles: taskState.repairCycles || 0,
+      escalationChannel: taskState.escalationChannel || null,
+      lastError: sanitize(taskState.lastError || "")
+    };
+  });
 
   const promptQualityFindings = [];
   if ([...blocked, ...awaitingEscalation].some((task) => /See attached|Add your|keep existing|placeholder/i.test(task.lastError))) {
@@ -198,6 +212,7 @@ async function collectSnapshot() {
     },
     tasks: {
       counts: taskCounts,
+      items,
       running,
       blocked,
       awaitingEscalation,
@@ -347,6 +362,82 @@ async function ensurePaperclipIssue(config, bridgeState) {
   return created.id;
 }
 
+function paperclipTaskStatus(status) {
+  if (status === "completed") return "done";
+  if (status === "running") return "in_progress";
+  if (status === "blocked" || status === "awaiting_escalation") return "blocked";
+  return "todo";
+}
+
+function taskIssueDescription(task, snapshot) {
+  const dependencies = task.dependsOn.length ? task.dependsOn.join(", ") : "none";
+  const error = task.lastError ? `\nLast error: ${task.lastError.split("\n")[0].slice(0, 500)}` : "";
+  return [
+    `Execution projection for ${task.id} in the local EdgeOps worker.`,
+    "",
+    task.objective,
+    "",
+    `Local status: ${task.status}`,
+    `Dependencies: ${dependencies}`,
+    `Attempts: ${task.attempts}; repair cycles: ${task.repairCycles}`,
+    `Escalation channel: ${task.escalationChannel || "none"}`,
+    `Dashboard: http://127.0.0.1:3210`,
+    `Repository ledger: ${snapshot.project}\\TASKS.md`,
+    error,
+    "",
+    "This issue is synchronized from the local execution ledger. Edit the operator plan and guardrails in the EdgeOps dashboard."
+  ].filter(Boolean).join("\n");
+}
+
+async function syncPaperclipTaskIssues(snapshot, config, bridgeState, parentIssueId) {
+  if (!config.syncTaskIssues) return bridgeState;
+  bridgeState.taskIssueIds ||= {};
+  bridgeState.taskFingerprints ||= {};
+
+  const existingResponse = await paperclipRequest(config, "GET", `/api/companies/${config.companyId}/issues`);
+  const existing = Array.isArray(existingResponse) ? existingResponse : existingResponse.value || [];
+
+  for (const task of snapshot.tasks.items || []) {
+    const title = `[${task.id}] ${task.title}`;
+    let issueId = bridgeState.taskIssueIds[task.id];
+    if (!issueId) {
+      const match = existing.find((issue) => issue.title === title);
+      if (match) {
+        issueId = match.id;
+      } else {
+        const created = await paperclipRequest(config, "POST", `/api/companies/${config.companyId}/issues`, {
+          projectId: config.projectId,
+          goalId: config.goalId,
+          parentId: parentIssueId,
+          title,
+          description: taskIssueDescription(task, snapshot),
+          status: paperclipTaskStatus(task.status),
+          priority: task.status === "running" || task.status === "blocked" ? "high" : "medium",
+          workMode: "standard"
+        });
+        issueId = created.id;
+      }
+      bridgeState.taskIssueIds[task.id] = issueId;
+    }
+
+    const fp = JSON.stringify({
+      status: task.status,
+      attempts: task.attempts,
+      repairCycles: task.repairCycles,
+      escalationChannel: task.escalationChannel,
+      lastError: task.lastError.slice(0, 500)
+    });
+    if (bridgeState.taskFingerprints[task.id] === fp) continue;
+    await paperclipRequest(config, "PATCH", `/api/issues/${issueId}`, {
+      status: paperclipTaskStatus(task.status),
+      description: taskIssueDescription(task, snapshot),
+      priority: task.status === "running" || task.status === "blocked" ? "high" : "medium"
+    });
+    bridgeState.taskFingerprints[task.id] = fp;
+  }
+  return bridgeState;
+}
+
 async function maybeSyncPaperclip(snapshot, config, bridgeState, fp, forceComment) {
   if (!config.syncPaperclip) return bridgeState;
   const issueId = await ensurePaperclipIssue(config, bridgeState);
@@ -360,6 +451,7 @@ async function maybeSyncPaperclip(snapshot, config, bridgeState, fp, forceCommen
   const ladder = snapshot.loopEngineering.escalation?.ladder?.map((channel) => channel.id).join(" -> ") || "not configured";
   const description = `Control issue for the local EdgeOps Qwen worker loop.\n\nLatest state: ${snapshot.worker.status}\nTask counts: ${JSON.stringify(snapshot.tasks.counts)}\nEscalation ladder: ${ladder}\nLocal ledger: ${snapshot.project}\\LOOPS\\edgeops-worker-loop.md\n\nNo pushes or deployments are performed by this bridge.`;
   await paperclipRequest(config, "PATCH", `/api/issues/${issueId}`, { status, description }).catch(() => {});
+  await syncPaperclipTaskIssues(snapshot, config, bridgeState, issueId);
 
   if (shouldComment) {
     const body = renderMarkdown(snapshot).slice(0, config.maxCommentChars || 5000);

@@ -2,61 +2,61 @@
 
 ## Goal
 
-Build a static GitHub Pages portfolio app that eventually showcases browser-side local AI. The existing `ShoeGun.github.io` portfolio stays the deployment target. Do not choose another host.
+Complete `T003`, the first real data vertical slice for EdgeOps Agent Studio:
+load a bundled CSV through DuckDB-Wasm inside an analytics Web Worker and return
+a structured, clone-safe schema to the React UI.
 
-## PR / Issue Context
+## Current Context
 
-Current worker task `T001` is only the foundation: repair the failed Vite migration and create a valid Vite React TypeScript scaffold while preserving or intentionally migrating the existing portfolio content.
+`T001` and `T002` are complete. The Vite/React/TypeScript scaffold and static UI
+shell pass the current quality gates. Prior `T003` attempts failed because the
+worker allowed out-of-focus edits, malformed JSON, directory edit paths, and
+unrelated workflow changes. The orchestration platform now rejects those
+proposals before applying them.
 
-Later tasks will add the actual browser model flow:
+## Implementation Plan For T003
 
-- visitor clicks "Launch local AI"
-- only then load model artifacts from an external CORS-compatible host such as Hugging Face Hub
-- persistently cache model artifacts in the browser
-- keep model weights and large binaries out of this repository
-- validate model, dataset, worker, and WebAssembly URLs from the final GitHub Pages production path
+1. Add `@duckdb/duckdb-wasm` through `package.json` and `npm install`; do not
+   hand-edit `package-lock.json`.
+2. Add a small deterministic CSV under `public/data/`.
+3. Define a typed request/response protocol under `src/workers/`.
+4. Initialize DuckDB-Wasm in `src/workers/analytics.worker.ts` using Vite `?url`
+   asset imports so the configured GitHub Pages base applies to worker and WASM
+   URLs.
+5. Resolve the demo dataset from an explicit base URL supplied by the main
+   thread. Do not hardcode localhost, `/data`, or a repository name.
+6. Return only structured-clone-safe schema primitives and handled error
+   responses.
+7. Add a narrow analytics client on the main thread and show loading, success,
+   schema, and error states without replacing the portfolio shell.
+8. Unit-test request correlation and surfaced worker errors. Document that
+   jsdom does not execute real nested workers/Wasm.
 
-## Implementation Plan For T001
-
-1. Recover from the failed local-model scaffold attempt without resetting unrelated worker/escalation changes.
-2. Inspect the current `HEAD` versions of portfolio files before editing content files.
-3. Make `package.json` valid JSON with minimal Vite/React/TypeScript scripts and dependencies.
-4. Use `index.html` as a Vite shell only.
-5. Put React code under `src/`.
-6. Preserve legacy portfolio content by migrating it into React or keeping legacy files unchanged as references.
-7. Configure `vite.config.ts` with `base: process.env.VITE_BASE_PATH || "/"`.
-8. Add or repair the GitHub Actions Pages workflow so it builds and uploads `dist`.
-9. Run all required validation commands.
-
-## Files Expected To Change For T001
+## Expected Files
 
 - `package.json`
 - `package-lock.json`
-- `index.html`
-- `src/`
-- `vite.config.ts`
-- `tsconfig.json`
-- `eslint.config.js` or equivalent
-- `.github/workflows/pages.yml`
+- `public/data/demo.csv`
+- `src/workers/analytics.types.ts`
+- `src/workers/analytics.worker.ts`
+- `src/lib/analyticsClient.ts`
+- focused React UI/test files under `src/`
 - `README.md`
 
-Leave `Code.gs`, root `style.css`, and root `script.js` unchanged unless their behavior/content is fully migrated and the reason is documented.
+## Do Not Touch
 
-## Non-goals
-
-- Do not deploy or push.
-- Do not add model weights.
-- Do not implement model loading before the scaffold is valid.
-- Do not replace the portfolio with starter/demo copy.
-- Do not truncate legacy files with placeholder comments.
+- `.github/workflows/pages.yml`
+- `vite.config.ts`
+- `TASKS.md`
+- `WORKER_STATE.json`
+- `worker/`
+- deployment settings, model weights, secrets, or unrelated portfolio content
 
 ## Done Criteria
 
-- `npm install` succeeds.
-- `npm run typecheck` succeeds.
-- `npm run lint` succeeds.
-- `npm run test` succeeds.
-- `npm run build` succeeds and writes `dist`.
-- Existing portfolio content is visibly preserved or explicitly migrated.
-- Vite base defaults to `/` and supports override.
-- GitHub Pages workflow builds `dist`.
+- Demo CSV loads through the analytics worker.
+- Schema inspection returns plain serializable values.
+- Worker and DuckDB errors surface as handled UI states.
+- Root and `/repo/` Vite builds resolve emitted assets correctly.
+- `npm run typecheck`, `npm run lint`, `npm run test`, and `npm run build` pass.
+- No push or deployment occurs.

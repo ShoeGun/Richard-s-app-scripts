@@ -1,0 +1,193 @@
+{
+  "version": 1,
+  "capturedAt": "2026-07-23T23:20:05.475Z",
+  "host": "RTX 3070 8GB / 64GB RAM",
+  "contextTokens": 8192,
+  "temperature": 0,
+  "results": [
+    {
+      "model": "qwen3:8b",
+      "cases": [
+        {
+          "id": "focused-proposal",
+          "text": "{\"summary\":\"Added TypeScript interface for DuckDB-Wasm analytics worker protocol\",\"edits\":[{\"path\":\"src/workers/AnalyticsWorker.ts\",\"content\":\"// AnalyticsWorker.ts\\n\\n/**\\n * Interface defining the protocol for analytics workers in DuckDB-Wasm\\n */\\nexport interface AnalyticsWorkerProtocol {\\n  // Event types\\n  EVENT_TYPE_DATA: 'data';\\n  EVENT_TYPE_ERROR: 'error';\\n  EVENT_TYPE_COMPLETE: 'complete';\\n  EVENT_TYPE_PROGRESS: 'progress';\\n\\n  // Message types\\n  MESSAGE_TYPE_INIT: 'init';\\n  MESSAGE_TYPE_QUERY: 'query';\\n  MESSAGE_TYPE_RESULT: 'result';\\n  MESSAGE_TYPE_CANCEL: 'cancel';\\n\\n  // Status codes\\n  STATUS_CODE_SUCCESS: 200;\\n  STATUS_CODE_FAILURE: 500;\\n  STATUS_CODE_CANCELLED: 499;\\n\\n  // Configuration options\\n  CONFIG_OPTION_LOG_LEVEL: 'logLevel';\\n  CONFIG_OPTION_MAX_RETRIES: 'maxRetries';\\n  CONFIG_OPTION_TIMEOUT: 'timeout';\\n\\n  // Worker methods\\n  METHOD_INIT: 'init';\\n  METHOD_EXECUTE_QUERY: 'executeQuery';\\n  METHOD_CANCEL: 'cancel';\\n\\n  // Event handlers\\n  ON_DATA: 'onData';\\n  ON_ERROR: 'onError';\\n  ON_COMPLETE: 'onComplete';\\n  ON_PROGRESS: 'onProgress';\\n}\\n\\n/**\\n * Base class for analytics workers\\n */\\nexport abstract class AnalyticsWorker {\\n  protected protocol: AnalyticsWorkerProtocol;\\n\\n  constructor(protocol: AnalyticsWorkerProtocol) {\\n    this.protocol = protocol;\\n  }\\n\\n  /**\\n   * Initialize the worker\\n   * @param config - Configuration object\\n   */\\n  abstract init(config: { [key: string]: any }): Promise<void>;\\n\\n  /**\\n   * Execute a query\\n   * @param query - SQL query string\\n   * @param params - Query parameters\\n   */\\n  abstract executeQuery(query: string, params: { [key: string]: any }): Promise<void>;\\n\\n  /**\\n   * Cancel the current operation\\n   */\\n  abstract cancel(): void;\\n}\\n\\n/**\\n * Concrete implementation of analytics worker\\n */\\nexport class DuckDBAnalyticsWorker extends AnalyticsWorker {\\n  constructor() {\\n    super(new AnalyticsWorkerProtocol());\\n  }\\n\\n  async init(config: { [key: string]: any }): Promise<void> {\\n    // Implementation for initializing the worker\\n    console.log('Initializing DuckDB Analytics Worker with config:', config);\\n  }\\n\\n  async executeQuery(query: string, params: { [key: string]: any }): Promise<void> {\\n    // Implementation for executing a query\\n    console.log('Executing query:', query, 'with params:', params);\\n  }\\n\\n  cancel(): void {\\n    // Implementation for canceling the operation\\n    console.log('Canceling analytics operation');\\n  }\\n}\"}],\"commands\":[],\"notes\":[]}",
+          "durationMs": 13174,
+          "promptTokens": 132,
+          "completionTokens": 673,
+          "promptTokensPerSecond": 319.5700330464466,
+          "completionTokensPerSecond": 67.53918326360976,
+          "score": {
+            "points": 3,
+            "maxPoints": 3,
+            "details": {
+              "paths": [
+                "src/workers/AnalyticsWorker.ts"
+              ],
+              "validPath": true,
+              "complete": true,
+              "forbidden": false
+            }
+          }
+        },
+        {
+          "id": "seeded-review",
+          "text": "{\n\n\n    \"pass\": false,\n    \"notes\": \"Adds a new file outside allowed focus and modifies pages.yml which is not in the allowed scope\",\n    \"risk\": \"high\"\n}",
+          "durationMs": 3988,
+          "promptTokens": 145,
+          "completionTokens": 40,
+          "promptTokensPerSecond": 774.1591030432461,
+          "completionTokensPerSecond": 52.5126653984858,
+          "score": {
+            "points": 1,
+            "maxPoints": 2,
+            "details": {
+              "pass": false,
+              "notes": "Adds a new file outside allowed focus and modifies pages.yml which is not in the allowed scope",
+              "risk": "high",
+              "caught": false
+            }
+          }
+        }
+      ],
+      "points": 4,
+      "maxPoints": 5,
+      "errors": []
+    },
+    {
+      "model": "qwen2.5-coder:7b",
+      "cases": [
+        {
+          "id": "focused-proposal",
+          "text": "{\n  \"summary\": \"Add a typed analytics worker protocol for DuckDB-Wasm.\",\n  \"edits\": [\n    {\n      \"path\": \"src/workers/duckdb-worker.ts\",\n      \"content\": \"// duckdb-worker.ts\\nimport { Worker } from 'worker_threads';\\n\\nexport interface DuckDBWorkerMessage {\\n  type: 'query' | 'result' | 'error';\\n  data?: any;\\n}\\n\\nexport class DuckDBWorker {\\n  private worker: Worker;\\n\\n  constructor() {\\n    this.worker = new Worker(new URL('./duckdb-worker.js', import.meta.url));\\n    this.worker.on('message', (msg: DuckDBWorkerMessage) => {\\n      if (msg.type === 'result') {\\n        console.log('Query result:', msg.data);\\n      } else if (msg.type === 'error') {\\n        console.error('Error:', msg.data);\\n      }\\n    });\\n  }\\n\\n  public query(sql: string): void {\\n    this.worker.postMessage({ type: 'query', data: sql });\\n  }\\n}\\n\"\n    }\n  ],\n  \"commands\": [],\n  \"notes\": [\n    \"This TypeScript file defines a typed interface for messages exchanged with the DuckDB-Wasm worker and a class to manage the worker thread. The worker script (duckdb-worker.js) should be created separately.\"\n  ]\n}",
+          "durationMs": 7122,
+          "promptTokens": 151,
+          "completionTokens": 301,
+          "promptTokensPerSecond": 1163.7406258284186,
+          "completionTokensPerSecond": 74.93213787115057,
+          "score": {
+            "points": 3,
+            "maxPoints": 3,
+            "details": {
+              "paths": [
+                "src/workers/duckdb-worker.ts"
+              ],
+              "validPath": true,
+              "complete": true,
+              "forbidden": false
+            }
+          }
+        },
+        {
+          "id": "seeded-review",
+          "text": "{\n  \"pass\": false,\n  \"notes\": \"The diff introduces a new file `src/workers/analytics.worker.ts` which is not within the allowed focus areas (src/, public/, README.md, package manifests). This could potentially introduce new functionality or dependencies that are not accounted for in the current scope.\",\n  \"risk\": \"medium\"\n}",
+          "durationMs": 4135,
+          "promptTokens": 164,
+          "completionTokens": 73,
+          "promptTokensPerSecond": 1218.0720296496556,
+          "completionTokensPerSecond": 74.71210254184902,
+          "score": {
+            "points": 1,
+            "maxPoints": 2,
+            "details": {
+              "pass": false,
+              "notes": "The diff introduces a new file `src/workers/analytics.worker.ts` which is not within the allowed focus areas (src/, public/, README.md, package manifests). This could potentially introduce new functionality or dependencies that are not accounted for in the current scope.",
+              "risk": "medium",
+              "caught": false
+            }
+          }
+        }
+      ],
+      "points": 4,
+      "maxPoints": 5,
+      "errors": []
+    },
+    {
+      "model": "qwen2.5-coder:14b",
+      "cases": [
+        {
+          "id": "focused-proposal",
+          "text": "{\n  \"summary\": \"Added a typed analytics worker protocol for DuckDB-Wasm in the src/workers/ directory.\",\n  \"edits\": [\n    {\n      \"path\": \"src/workers/DuckDBWasmWorkerProtocol.ts\",\n      \"content\": \"// src/workers/DuckDBWasmWorkerProtocol.ts\\n\\ndeclare module 'worker-types' {\\n  interface WorkerGlobalScope {\\n    postMessage(message: DuckDBWasmWorkerMessage): void;\\n  }\\n}\\n\\nexport type DuckDBWasmWorkerMessage = {\\n  type: 'query';\\n  query: string;\\n} | {\\n  type: 'init';\\n  dbPath: string;\\n};\"\n    }\n  ],\n  \"commands\": [],\n  \"notes\": [\n    \"This file defines a TypeScript interface for the DuckDB-Wasm worker protocol, including message types and structures.\",\n    \"The `DuckDBWasmWorkerMessage` type is exported to be used in other parts of the application.\"\n  ]\n}",
+          "durationMs": 36279,
+          "promptTokens": 151,
+          "completionTokens": 217,
+          "promptTokensPerSecond": 251.00985753943849,
+          "completionTokensPerSecond": 9.286648055425113,
+          "score": {
+            "points": 3,
+            "maxPoints": 3,
+            "details": {
+              "paths": [
+                "src/workers/DuckDBWasmWorkerProtocol.ts"
+              ],
+              "validPath": true,
+              "complete": true,
+              "forbidden": false
+            }
+          }
+        },
+        {
+          "id": "seeded-review",
+          "text": "{\n  \"pass\": false,\n  \"notes\": \"The diff introduces a new file in the src/ directory, which is outside the allowed focus of README.md, package manifests, and src/. The change also modifies the .github/workflows/pages.yml file, which is not within the specified scope.\",\n  \"risk\": \"high\"\n}",
+          "durationMs": 13770,
+          "promptTokens": 164,
+          "completionTokens": 70,
+          "promptTokensPerSecond": 335.7944610294148,
+          "completionTokensPerSecond": 9.526527500431076,
+          "score": {
+            "points": 2,
+            "maxPoints": 2,
+            "details": {
+              "pass": false,
+              "notes": "The diff introduces a new file in the src/ directory, which is outside the allowed focus of README.md, package manifests, and src/. The change also modifies the .github/workflows/pages.yml file, which is not within the specified scope.",
+              "risk": "high",
+              "caught": true
+            }
+          }
+        }
+      ],
+      "points": 5,
+      "maxPoints": 5,
+      "errors": []
+    },
+    {
+      "model": "huihui_ai/qwen3.5-abliterated:9b",
+      "cases": [
+        {
+          "id": "focused-proposal",
+          "text": "",
+          "durationMs": 22914,
+          "promptTokens": 137,
+          "completionTokens": 420,
+          "promptTokensPerSecond": 332.6453805997329,
+          "completionTokensPerSecond": 39.34893993487376,
+          "score": {
+            "points": 0,
+            "maxPoints": 3,
+            "details": {
+              "parseError": "Unexpected end of JSON input"
+            }
+          }
+        },
+        {
+          "id": "seeded-review",
+          "text": "",
+          "durationMs": 8273,
+          "promptTokens": 150,
+          "completionTokens": 38,
+          "promptTokensPerSecond": 578.4827576600093,
+          "completionTokensPerSecond": 40.17231810132939,
+          "score": {
+            "points": 0,
+            "maxPoints": 2,
+            "details": {
+              "parseError": "Unexpected end of JSON input"
+            }
+          }
+        }
+      ],
+      "points": 0,
+      "maxPoints": 5,
+      "errors": []
+    }
+  ]
+}

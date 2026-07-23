@@ -7,10 +7,10 @@
   "paperclipProjectName": "AI Lab Operations",
   "loopTitle": "EdgeOps Qwen Worker Loop",
   "syncPaperclip": true,
+  "syncTaskIssues": true,
   "syncIntervalSeconds": 300,
   "commentCooldownSeconds": 900,
   "maxCommentChars": 5000,
   "agenticWorklogPath": "LOOPS/edgeops-worker-loop.md",
   "statePath": "LOOPS/edgeops-worker-loop.json"
 }
-

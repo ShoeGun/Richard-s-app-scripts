@@ -9,10 +9,46 @@
   "busySleepSeconds": 180,
   "maxRepairCycles": 3,
   "restoreFailedAttemptEdits": true,
+  "routing": {
+    "implementerModel": "qwen3:8b",
+    "repairModel": "qwen2.5-coder:14b",
+    "reviewerModel": "qwen2.5-coder:14b"
+  },
+  "proposalLimits": {
+    "maxFilesPerTask": 12,
+    "maxCharsPerFile": 120000,
+    "maxTotalEditChars": 400000
+  },
+  "protectedPathPrefixes": [
+    ".git/",
+    ".worker-control/",
+    "node_modules/",
+    "worker/",
+    "PLANS/",
+    "ESCALATIONS/",
+    "LOOPS/"
+  ],
+  "protectedFiles": [
+    "AGENTS.md",
+    "ARCHITECTURE.md",
+    "BLOCKERS.md",
+    "DECISIONS.md",
+    "HANDOFF.md",
+    "RUN_LOG.md",
+    "SPEC.md",
+    "TASKS.md",
+    "WORKER_STATE.json",
+    "loop.config.json"
+  ],
+  "alwaysEditablePaths": [
+    "package.json",
+    "package-lock.json"
+  ],
   "escalation": {
     "enabled": true,
     "codexCommand": "C:\\Users\\Richard\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe",
     "ladder": [
+      "qwen-coder-14b-local",
       "gpt-5.4",
       "gpt-5.6"
     ],
@@ -55,7 +91,16 @@
         "type": "ollama",
         "model": "qwen2.5-coder:7b",
         "enabled": true,
-        "autoInvoke": false,
+        "autoInvoke": true,
+        "contextTokens": 16384,
+        "temperature": 0.1
+      },
+      {
+        "id": "qwen-coder-14b-local",
+        "type": "ollama",
+        "model": "qwen2.5-coder:14b",
+        "enabled": true,
+        "autoInvoke": true,
         "contextTokens": 16384,
         "temperature": 0.1
       },
@@ -63,7 +108,7 @@
         "id": "qwen3-32b-local",
         "type": "ollama",
         "model": "qwen3:32b",
-        "enabled": false,
+        "enabled": true,
         "autoInvoke": false,
         "contextTokens": 16384,
         "temperature": 0.1

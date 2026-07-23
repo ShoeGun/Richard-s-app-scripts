@@ -4,6 +4,7 @@ coverage/
 .vite/
 .worker-control/
 worker/logs/
+worker/runtime/
 LOOPS/edgeops-worker-loop.*
 LOOPS/loop-bridge-state.json
 ESCALATIONS/outbox/
