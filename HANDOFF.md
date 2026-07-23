@@ -24,3 +24,12 @@ powershell -ExecutionPolicy Bypass -File .\worker-doctor.ps1
 The worker reads `TASKS.md` for the task queue and `WORKER_STATE.json` for compact persistent state. Detailed logs are stored under ignored `worker/logs/`.
 
 Do not push or publish Pages changes until Richard explicitly approves deployment. This repository is a user GitHub Pages site, so Vite should default to `base: "/"`.
+
+Local-first escalation loop:
+
+- Put detailed plans in `PLANS/ACTIVE_PLAN.md`.
+- Put tests in `PLANS/TEST_PATTERNS.md`.
+- Put extra constraints in `PLANS/GUARDRAILS.md`.
+- Escalation requests are generated under `ESCALATIONS/outbox/`.
+- Save ChatGPT/frontier answers under `ESCALATIONS/inbox/<TASK_ID>.md`.
+- See `LOOPS/LOCAL_FIRST_ESCALATION.md`.

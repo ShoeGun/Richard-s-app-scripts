@@ -114,6 +114,16 @@ async function collectSnapshot() {
       lastError: sanitize(workerState.taskStates?.[task.id]?.lastError || "")
     }));
 
+  const awaitingEscalation = tasks
+    .filter((task) => taskStatus(workerState, task.id) === "awaiting_escalation")
+    .map((task) => ({
+      id: task.id,
+      title: task.title,
+      requestPath: workerState.taskStates?.[task.id]?.escalationRequestPath || null,
+      channel: workerState.taskStates?.[task.id]?.escalationChannel || null,
+      lastError: sanitize(workerState.taskStates?.[task.id]?.lastError || "")
+    }));
+
   const running = tasks
     .filter((task) => taskStatus(workerState, task.id) === "running")
     .map((task) => ({ id: task.id, title: task.title }));
@@ -125,10 +135,10 @@ async function collectSnapshot() {
   });
 
   const promptQualityFindings = [];
-  if (blocked.some((task) => /See attached|Add your|keep existing|placeholder/i.test(task.lastError))) {
+  if ([...blocked, ...awaitingEscalation].some((task) => /See attached|Add your|keep existing|placeholder/i.test(task.lastError))) {
     promptQualityFindings.push("Model produced placeholder edits instead of full-file content.");
   }
-  if (gitStatus.includes("package.json") && workerState.taskStates?.T001?.status === "blocked") {
+  if (gitStatus.includes("package.json") && ["blocked", "awaiting_escalation"].includes(workerState.taskStates?.T001?.status)) {
     promptQualityFindings.push("Repository has uncommitted failed worker edits from blocked T001.");
   }
 
@@ -156,6 +166,7 @@ async function collectSnapshot() {
       counts: taskCounts,
       running,
       blocked,
+      awaitingEscalation,
       nextReady: nextReady ? { id: nextReady.id, title: nextReady.title } : null
     },
     loopEngineering: {
@@ -177,6 +188,7 @@ function fingerprint(snapshot) {
     worker: snapshot.worker,
     counts: snapshot.tasks.counts,
     blocked: snapshot.tasks.blocked.map((task) => [task.id, task.lastError.slice(0, 400)]),
+    awaitingEscalation: snapshot.tasks.awaitingEscalation.map((task) => [task.id, task.requestPath, task.lastError.slice(0, 400)]),
     git: snapshot.git.status
   });
 }
@@ -184,6 +196,9 @@ function fingerprint(snapshot) {
 function renderMarkdown(snapshot) {
   const blockedLines = snapshot.tasks.blocked.length
     ? snapshot.tasks.blocked.map((task) => `- ${task.id}: ${task.title}\n  - ${task.lastError.split("\n")[0].slice(0, 240)}`).join("\n")
+    : "- None";
+  const awaitingLines = snapshot.tasks.awaitingEscalation.length
+    ? snapshot.tasks.awaitingEscalation.map((task) => `- ${task.id}: ${task.title}\n  - Channel: ${task.channel || "manual"}\n  - Request: \`${task.requestPath || "not written"}\``).join("\n")
     : "- None";
 
   return `# EdgeOps Qwen Worker Loop
@@ -221,6 +236,10 @@ ${JSON.stringify(snapshot.tasks.nextReady, null, 2)}
 ## Blocked Tasks
 
 ${blockedLines}
+
+## Awaiting Escalation
+
+${awaitingLines}
 
 ## Loop Engineering Findings
 
@@ -294,7 +313,7 @@ async function maybeSyncPaperclip(snapshot, config, bridgeState, fp, forceCommen
   const cooldownMs = (config.commentCooldownSeconds || 900) * 1000;
   const shouldComment = forceComment || bridgeState.lastFingerprint !== fp || !bridgeState.lastPaperclipCommentAt || now - Date.parse(bridgeState.lastPaperclipCommentAt) > cooldownMs;
 
-  const status = snapshot.tasks.blocked.length ? "blocked" : "todo";
+  const status = snapshot.tasks.blocked.length || snapshot.tasks.awaitingEscalation.length ? "blocked" : "todo";
   const description = `Control issue for the local EdgeOps Qwen worker loop.\n\nLatest state: ${snapshot.worker.status}\nTask counts: ${JSON.stringify(snapshot.tasks.counts)}\nLocal ledger: ${snapshot.project}\\LOOPS\\edgeops-worker-loop.md\n\nNo pushes or deployments are performed by this bridge.`;
   await paperclipRequest(config, "PATCH", `/api/issues/${issueId}`, { status, description }).catch(() => {});
 

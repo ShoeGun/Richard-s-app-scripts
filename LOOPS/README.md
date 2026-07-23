@@ -8,6 +8,6 @@ Primary loop:
 
 - `edgeops-worker-loop.md` - human-readable loop state.
 - `edgeops-worker-loop.json` - machine-readable loop state.
+- `LOCAL_FIRST_ESCALATION.md` - operating guide for local-first work with rare frontier escalation.
 
 The loop bridge can also sync concise status comments into Paperclip. It must never include secrets, full raw model output, npm debug logs, browser profile data, or unrelated filesystem content.
-

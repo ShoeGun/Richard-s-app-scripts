@@ -6,6 +6,10 @@ coverage/
 worker/logs/
 LOOPS/edgeops-worker-loop.*
 LOOPS/loop-bridge-state.json
+ESCALATIONS/outbox/
+ESCALATIONS/inbox/
+ESCALATIONS/processed/
+ESCALATIONS/local/
 *.log
 .env
 .env.*

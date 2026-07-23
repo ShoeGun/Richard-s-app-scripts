@@ -15,6 +15,12 @@ const PAUSE_FILE = path.join(CONTROL_DIR, "paused");
 const STOP_FILE = path.join(CONTROL_DIR, "stop");
 const LOG_DIR = path.join(__dirname, "logs");
 const DETAIL_LOG = path.join(LOG_DIR, "worker-detail.log");
+const PLANS_DIR = path.join(ROOT, "PLANS");
+const ESCALATIONS_DIR = path.join(ROOT, "ESCALATIONS");
+const ESCALATION_OUTBOX = path.join(ESCALATIONS_DIR, "outbox");
+const ESCALATION_INBOX = path.join(ESCALATIONS_DIR, "inbox");
+const ESCALATION_PROCESSED = path.join(ESCALATIONS_DIR, "processed");
+const ESCALATION_LOCAL = path.join(ESCALATIONS_DIR, "local");
 
 const argv = new Set(process.argv.slice(2));
 
@@ -29,10 +35,11 @@ async function main() {
   if (argv.has("--stop")) return setStatus("stopped", "Stop requested.");
   if (argv.has("--smoke-edit")) return smokeEdit();
   if (argv.has("--benchmark")) return benchmarkModels();
+  if (argv.has("--escalate")) return runLocalEscalation();
   if (argv.has("--once")) return runOnce();
   if (argv.has("--loop")) return runLoop();
 
-  console.log("Usage: node worker/qwen-worker.mjs --doctor|--status|--once|--loop|--smoke-edit|--benchmark");
+  console.log("Usage: node worker/qwen-worker.mjs --doctor|--status|--once|--loop|--smoke-edit|--benchmark|--escalate <TASK_ID> --channel <CHANNEL_ID>");
 }
 
 async function readJson(filePath, fallback) {
@@ -71,7 +78,19 @@ async function saveState(state) {
   state.lastHeartbeat = new Date().toISOString();
   const tmp = `${STATE_PATH}.tmp`;
   await fs.writeFile(tmp, `${JSON.stringify(state, null, 2)}\n`, "utf8");
-  await fs.rename(tmp, STATE_PATH);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await fs.rename(tmp, STATE_PATH);
+      return;
+    } catch (error) {
+      if (!["EPERM", "EBUSY", "EACCES"].includes(error.code) || attempt === 4) {
+        await fs.writeFile(STATE_PATH, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+        await fs.rm(tmp, { force: true }).catch(() => {});
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+    }
+  }
 }
 
 async function setStatus(status, error) {
@@ -92,6 +111,14 @@ async function log(message, extra = null) {
   const line = `[${new Date().toISOString()}] ${message}${extra ? ` ${JSON.stringify(extra)}` : ""}\n`;
   await appendFile(DETAIL_LOG, line);
   await appendFile(path.join(ROOT, "RUN_LOG.md"), `- ${line}`);
+}
+
+async function readOptionalText(filePath, maxChars = 30000) {
+  try {
+    return (await fs.readFile(filePath, "utf8")).slice(0, maxChars);
+  } catch {
+    return "";
+  }
 }
 
 function relativeSafePath(inputPath) {
@@ -126,7 +153,7 @@ function taskStatus(state, taskId) {
 function nextReadyTask(tasks, state) {
   for (const task of tasks) {
     const status = taskStatus(state, task.id);
-    if (status === "completed" || status === "blocked" || status === "running") continue;
+    if (status === "completed" || status === "blocked" || status === "running" || status === "awaiting_escalation") continue;
     const deps = task.dependsOn || [];
     if (deps.every((dep) => taskStatus(state, dep) === "completed")) return task;
   }
@@ -153,7 +180,18 @@ async function listTree() {
 }
 
 async function readFocusFiles(task) {
-  const files = new Set(["SPEC.md", "ARCHITECTURE.md", "AGENTS.md", "DECISIONS.md", "BLOCKERS.md", "WORKER_STATE.json", "package.json"]);
+  const files = new Set([
+    "SPEC.md",
+    "ARCHITECTURE.md",
+    "AGENTS.md",
+    "DECISIONS.md",
+    "BLOCKERS.md",
+    "WORKER_STATE.json",
+    "PLANS/ACTIVE_PLAN.md",
+    "PLANS/TEST_PATTERNS.md",
+    "PLANS/GUARDRAILS.md",
+    "package.json"
+  ]);
   for (const focus of task.focus || []) {
     const safe = relativeSafePath(focus);
     if (!existsSync(safe.absolute)) continue;
@@ -384,12 +422,89 @@ async function commitTask(task) {
   return message;
 }
 
-function buildTaskPrompt(task, state, tree, focusFiles) {
+async function readOperatorContext(taskId) {
+  const escalationAnswer = await readOptionalText(path.join(ESCALATION_INBOX, `${taskId}.md`), 20000);
+  return {
+    activePlan: await readOptionalText(path.join(PLANS_DIR, "ACTIVE_PLAN.md"), 24000),
+    testPatterns: await readOptionalText(path.join(PLANS_DIR, "TEST_PATTERNS.md"), 16000),
+    guardrails: await readOptionalText(path.join(PLANS_DIR, "GUARDRAILS.md"), 16000),
+    escalationAnswer
+  };
+}
+
+async function consumeEscalationAnswers(state) {
+  await fs.mkdir(ESCALATION_INBOX, { recursive: true });
+  await fs.mkdir(ESCALATION_PROCESSED, { recursive: true });
+  const entries = await fs.readdir(ESCALATION_INBOX, { withFileTypes: true }).catch(() => []);
+  let consumed = 0;
+
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".md")) continue;
+    const taskId = entry.name.replace(/\.md$/i, "").split(".")[0];
+    const taskState = state.taskStates[taskId];
+    if (!taskState || !["awaiting_escalation", "blocked"].includes(taskState.status)) continue;
+
+    const source = path.join(ESCALATION_INBOX, entry.name);
+    const answer = await fs.readFile(source, "utf8");
+    taskState.status = "pending";
+    taskState.repairCycles = 0;
+    taskState.escalationAnswer = answer.slice(0, 20000);
+    taskState.escalationResolvedAt = new Date().toISOString();
+    taskState.lastError = null;
+    state.lastError = null;
+    state.status = "idle";
+
+    const target = path.join(ESCALATION_PROCESSED, `${new Date().toISOString().replace(/[:.]/g, "-")}-${entry.name}`);
+    await fs.rename(source, target);
+    await log(`Consumed escalation answer for ${taskId}`, { source: entry.name });
+    consumed += 1;
+  }
+
+  return consumed;
+}
+
+async function normalizeBlockedTasksToEscalations(tasks, state, config) {
+  let changed = false;
+  for (const task of tasks) {
+    const taskState = state.taskStates[task.id];
+    if (!taskState || taskState.status !== "blocked" || taskState.escalationRequestedAt) continue;
+    if (!config.escalation?.enabled) continue;
+    const request = await createEscalationRequest(task, state, taskState, config);
+    taskState.status = "awaiting_escalation";
+    taskState.escalationRequestedAt = request.createdAt;
+    taskState.escalationRequestPath = request.latestPath;
+    taskState.escalationChannel = config.escalation.manualFrontierChannel?.id || "manual";
+    state.status = "awaiting_escalation";
+    state.currentTaskId = null;
+    state.lastError = `Awaiting escalation answer for ${task.id}: ${request.latestPath}`;
+    changed = true;
+    await log(`Converted blocked task ${task.id} to awaiting escalation`, { request: request.latestPath });
+  }
+  return changed;
+}
+
+function buildTaskPrompt(task, state, tree, focusFiles, operatorContext) {
   const taskState = state.taskStates[task.id] || {};
   const lastError = taskState.lastError ? `\nPrevious failure to repair:\n${taskState.lastError}\n` : "";
+  const escalationGuidance = taskState.escalationAnswer || operatorContext.escalationAnswer;
   return `You are local Qwen, an autonomous software-development worker operating inside this repository only.
 
 You must inspect the provided files before editing. Make bounded, production-minded changes for exactly one task. Keep persistent state compact. Do not add secrets. Do not access paths outside the repository.
+The human operator may provide plans, PR details, test patterns, and extra guardrails. Treat them as high-priority task guidance.
+Never return placeholders such as "see attached", "add your code here", or "keep existing styles". Every edit must include complete file content.
+If stuck, fail compactly; do not improvise with placeholders.
+
+Operator active plan:
+${operatorContext.activePlan || "(none provided)"}
+
+Operator test patterns:
+${operatorContext.testPatterns || "(none provided)"}
+
+Operator extra guardrails:
+${operatorContext.guardrails || "(none provided)"}
+
+Escalation guidance from frontier/local reviewer:
+${escalationGuidance || "(none provided)"}
 
 Current task:
 ${JSON.stringify(task, null, 2)}
@@ -415,6 +530,137 @@ Return only JSON with this shape:
 Use full-file replacement content for every edited file. If a file should be created, include its full content. If you need dependencies, edit package.json and include "npm install" as a command.`;
 }
 
+async function createEscalationRequest(task, state, taskState, config) {
+  await fs.mkdir(ESCALATION_OUTBOX, { recursive: true });
+  const diffSummary = await gitDiffSummary();
+  const operatorContext = await readOperatorContext(task.id);
+  const createdAt = new Date().toISOString();
+  const safeStamp = createdAt.replace(/[:.]/g, "-");
+  const latestPath = path.join(ESCALATION_OUTBOX, `${task.id}.md`);
+  const archivePath = path.join(ESCALATION_OUTBOX, `${safeStamp}-${task.id}.md`);
+  const manual = config.escalation?.manualFrontierChannel || {};
+  const body = `# Escalation Request: ${task.id} - ${task.title}
+
+Created: ${createdAt}
+
+Preferred frontier channel: ${manual.label || manual.id || "manual ChatGPT"}
+
+## What I Need
+
+Please unblock the local worker with a compact, implementation-oriented answer. Do not rewrite the whole project. Give:
+
+1. Diagnosis of why the local model failed.
+2. A minimal recovery plan.
+3. Specific file-level guidance for the next local attempt.
+4. Any test/validation command expectations.
+5. Red flags the local worker must avoid.
+
+The answer will be saved to \`ESCALATIONS/inbox/${task.id}.md\` and injected into the next local-model prompt.
+
+## Task
+
+\`\`\`json
+${JSON.stringify(task, null, 2)}
+\`\`\`
+
+## Operator Plan
+
+\`\`\`markdown
+${operatorContext.activePlan || "(none provided)"}
+\`\`\`
+
+## Test Patterns
+
+\`\`\`markdown
+${operatorContext.testPatterns || "(none provided)"}
+\`\`\`
+
+## Guardrails
+
+\`\`\`markdown
+${operatorContext.guardrails || "(none provided)"}
+\`\`\`
+
+## Last Local Failure
+
+\`\`\`text
+${String(taskState.lastError || "").slice(0, 8000)}
+\`\`\`
+
+## Git Status
+
+\`\`\`text
+${diffSummary.status.slice(0, 12000)}
+\`\`\`
+
+## Diff Stat
+
+\`\`\`text
+${diffSummary.stat.slice(0, 8000)}
+\`\`\`
+
+## Important Constraint
+
+The next local worker response must provide complete file contents in JSON edits. Placeholder text is rejected.
+`;
+  await fs.writeFile(latestPath, body, "utf8");
+  await fs.writeFile(archivePath, body, "utf8");
+  return { createdAt, latestPath };
+}
+
+async function runLocalEscalation() {
+  const taskId = process.argv[process.argv.indexOf("--escalate") + 1];
+  if (!taskId || taskId.startsWith("--")) throw new Error("Use --escalate <TASK_ID>.");
+  const channelFlag = process.argv.indexOf("--channel");
+  const channelId = channelFlag >= 0 ? process.argv[channelFlag + 1] : null;
+  const config = await loadConfig();
+  const state = await loadState(config);
+  const tasks = await extractTasks();
+  const task = tasks.find((item) => item.id === taskId);
+  if (!task) throw new Error(`Unknown task: ${taskId}`);
+  const taskState = state.taskStates[taskId] || { status: "awaiting_escalation", attempts: 0, repairCycles: 0 };
+  state.taskStates[taskId] = taskState;
+
+  const channels = config.escalation?.localChannels || [];
+  const channel = channels.find((item) => item.enabled && (!channelId || item.id === channelId));
+  if (!channel) throw new Error(`No enabled local escalation channel${channelId ? ` named ${channelId}` : ""}.`);
+  if (channel.type !== "ollama") throw new Error(`Unsupported local escalation channel type: ${channel.type}`);
+
+  let request = await readOptionalText(path.join(ESCALATION_OUTBOX, `${taskId}.md`), 40000);
+  if (!request) {
+    const created = await createEscalationRequest(task, state, taskState, config);
+    request = await fs.readFile(created.latestPath, "utf8");
+  }
+
+  await fs.mkdir(ESCALATION_LOCAL, { recursive: true });
+  await fs.mkdir(ESCALATION_INBOX, { recursive: true });
+  const prompt = `${request}
+
+You are the local escalation model "${channel.id}" (${channel.model}).
+Return concise reviewer guidance only. Do not emit JSON edits. Focus on how the next worker attempt should recover safely.`;
+  const answer = await ollamaGenerate(config, channel.model, prompt, 20 * 60 * 1000, {
+    num_ctx: channel.contextTokens || config.contextTokens || 16384,
+    temperature: channel.temperature ?? 0.1
+  });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const localPath = path.join(ESCALATION_LOCAL, `${stamp}-${taskId}-${channel.id}.md`);
+  const inboxPath = path.join(ESCALATION_INBOX, `${taskId}.md`);
+  const body = `# Local Escalation Answer: ${taskId}
+
+Channel: ${channel.id}
+
+Model: ${channel.model}
+
+Created: ${new Date().toISOString()}
+
+${answer}
+`;
+  await fs.writeFile(localPath, body, "utf8");
+  await fs.writeFile(inboxPath, body, "utf8");
+  await unloadModel(config, channel.model);
+  console.log(JSON.stringify({ ok: true, taskId, channel: channel.id, model: channel.model, inboxPath, localPath }, null, 2));
+}
+
 async function processTask(task, config, state) {
   const taskState = state.taskStates[task.id] || { status: "pending", attempts: 0, repairCycles: 0 };
   taskState.status = "running";
@@ -431,7 +677,8 @@ async function processTask(task, config, state) {
   try {
     const tree = await listTree();
     const focusFiles = await readFocusFiles(task);
-    const prompt = buildTaskPrompt(task, state, tree, focusFiles);
+    const operatorContext = await readOperatorContext(task.id);
+    const prompt = buildTaskPrompt(task, state, tree, focusFiles, operatorContext);
     const raw = await ollamaGenerate(config, model, prompt);
     await appendFile(DETAIL_LOG, `\n[model:${model}] task ${task.id}\n${raw}\n`);
     const action = extractJsonObject(raw);
@@ -467,15 +714,25 @@ async function processTask(task, config, state) {
     state.currentTaskId = null;
 
     if (taskState.repairCycles >= (state.maxRepairCycles || 3)) {
-      taskState.status = "blocked";
-      taskState.blockedAt = new Date().toISOString();
-      await appendFile(path.join(ROOT, "BLOCKERS.md"), `\n## ${task.id}: ${task.title}\n\n${taskState.lastError}\n`);
-      await log(`Blocked task ${task.id}`, { error: taskState.lastError });
+      if (config.escalation?.enabled) {
+        const request = await createEscalationRequest(task, state, taskState, config);
+        taskState.status = "awaiting_escalation";
+        taskState.escalationRequestedAt = request.createdAt;
+        taskState.escalationRequestPath = request.latestPath;
+        taskState.escalationChannel = config.escalation.manualFrontierChannel?.id || "manual";
+        await appendFile(path.join(ROOT, "BLOCKERS.md"), `\n## ${task.id}: ${task.title}\n\nAwaiting escalation answer: ${request.latestPath}\n\n${taskState.lastError}\n`);
+        await log(`Task ${task.id} awaiting escalation`, { request: request.latestPath, error: taskState.lastError });
+      } else {
+        taskState.status = "blocked";
+        taskState.blockedAt = new Date().toISOString();
+        await appendFile(path.join(ROOT, "BLOCKERS.md"), `\n## ${task.id}: ${task.title}\n\n${taskState.lastError}\n`);
+        await log(`Blocked task ${task.id}`, { error: taskState.lastError });
+      }
     } else {
       await log(`Task ${task.id} needs repair`, { repairCycles: taskState.repairCycles, error: taskState.lastError });
     }
 
-    state.status = taskState.status === "blocked" ? "idle" : "repair_wait";
+    state.status = taskState.status === "blocked" || taskState.status === "awaiting_escalation" ? taskState.status : "repair_wait";
     await saveState(state);
   } finally {
     await unloadModel(config, model);
@@ -501,6 +758,12 @@ async function runOnce() {
   }
 
   const tasks = await extractTasks();
+  const consumedAnswers = await consumeEscalationAnswers(state);
+  const normalizedEscalations = await normalizeBlockedTasksToEscalations(tasks, state, config);
+  if (consumedAnswers || normalizedEscalations) {
+    await saveState(state);
+  }
+
   if (allTerminal(tasks, state)) {
     state.status = "complete";
     state.currentTaskId = null;
@@ -512,11 +775,14 @@ async function runOnce() {
 
   const task = nextReadyTask(tasks, state);
   if (!task) {
-    state.status = "idle";
+    const awaiting = tasks.find((item) => taskStatus(state, item.id) === "awaiting_escalation");
+    state.status = awaiting ? "awaiting_escalation" : "idle";
     state.currentTaskId = null;
-    state.lastError = "No ready independent task.";
+    state.lastError = awaiting
+      ? `Awaiting escalation answer for ${awaiting.id}.`
+      : "No ready independent task.";
     await saveState(state);
-    console.log("No ready independent task.");
+    console.log(state.lastError);
     return;
   }
 

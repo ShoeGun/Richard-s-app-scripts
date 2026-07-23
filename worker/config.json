@@ -8,6 +8,34 @@
   "idleSleepSeconds": 120,
   "busySleepSeconds": 180,
   "maxRepairCycles": 3,
+  "escalation": {
+    "enabled": true,
+    "manualFrontierChannel": {
+      "id": "chatgpt-5.4-manual",
+      "label": "ChatGPT 5.4 manual escalation",
+      "instructions": "Paste the latest ESCALATIONS/outbox request into ChatGPT 5.4. Save the answer as ESCALATIONS/inbox/<TASK_ID>.md or use answer-escalation.ps1."
+    },
+    "localChannels": [
+      {
+        "id": "qwen-coder-local",
+        "type": "ollama",
+        "model": "qwen2.5-coder:7b",
+        "enabled": true,
+        "autoInvoke": false,
+        "contextTokens": 16384,
+        "temperature": 0.1
+      },
+      {
+        "id": "qwen3-32b-local",
+        "type": "ollama",
+        "model": "qwen3:32b",
+        "enabled": false,
+        "autoInvoke": false,
+        "contextTokens": 16384,
+        "temperature": 0.1
+      }
+    ]
+  },
   "knownGpuLockFiles": [
     "../model_server.lock",
     "../hermes_ui_test.lock",
@@ -32,4 +60,3 @@
     "node worker/smoke-test.mjs"
   ]
 }
-
