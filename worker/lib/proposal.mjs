@@ -118,23 +118,30 @@ export async function validateProposal({ root, task, action, config = {} }) {
     if (seen.has(lowered)) throw new Error(`Duplicate edit path: ${safe.normalized}`);
     seen.add(lowered);
 
-    if (typeof edit.content !== "string") {
+    let content = edit.content;
+    if (safe.normalized.toLowerCase().endsWith(".json")
+      && content !== null
+      && typeof content === "object"
+      && !Array.isArray(content)) {
+      content = `${JSON.stringify(content, null, 2)}\n`;
+    }
+    if (typeof content !== "string") {
       throw new Error(`Edit for ${safe.normalized} is missing string content.`);
     }
-    if (edit.content.length > maxFileChars) {
+    if (content.length > maxFileChars) {
       throw new Error(`Edit for ${safe.normalized} exceeds ${maxFileChars} characters.`);
     }
-    totalChars += edit.content.length;
+    totalChars += content.length;
     if (totalChars > maxTotalChars) {
       throw new Error(`Proposal content exceeds ${maxTotalChars} characters.`);
     }
-    validateContent(safe.normalized, edit.content);
+    validateContent(safe.normalized, content);
 
     if (existsSync(safe.absolute)) {
       const stat = await fs.stat(safe.absolute);
       if (!stat.isFile()) throw new Error(`Edit path is an existing directory: ${safe.normalized}`);
     }
-    edits.push({ path: safe.normalized, absolute: safe.absolute, content: edit.content });
+    edits.push({ path: safe.normalized, absolute: safe.absolute, content });
   }
 
   return {

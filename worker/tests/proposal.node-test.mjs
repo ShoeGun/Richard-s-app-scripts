@@ -64,3 +64,17 @@ test("allows dependency manifests and includes generated lockfile in commit scop
   });
   assert.deepEqual(commitPathsForProposal(proposal), ["package.json", "package-lock.json"]);
 }));
+
+test("serializes object content for JSON files", async () => withRoot(async (root) => {
+  const proposal = await validateProposal({
+    root,
+    task: { id: "T3", focus: ["src"] },
+    action: {
+      edits: [{
+        path: "package.json",
+        content: { name: "demo", private: true }
+      }]
+    }
+  });
+  assert.equal(proposal.edits[0].content, '{\n  "name": "demo",\n  "private": true\n}\n');
+}));

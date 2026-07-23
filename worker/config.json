@@ -7,6 +7,7 @@
   "temperature": 0.15,
   "keepAlive": "2m",
   "idleSleepSeconds": 120,
+  "repairSleepSeconds": 30,
   "busySleepSeconds": 180,
   "maxRepairCycles": 3,
   "restoreFailedAttemptEdits": true,

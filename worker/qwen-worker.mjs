@@ -797,7 +797,7 @@ Return only JSON with this shape:
 {
   "summary": "short summary of intended changes",
   "edits": [
-    {"path": "relative/path/from/repo/root", "content": "complete new file content"}
+    {"path": "relative/path/from/repo/root", "content": "complete new file content or a native object for a .json file"}
   ],
   "commands": [
     "optional allowlisted command"
@@ -805,7 +805,7 @@ Return only JSON with this shape:
   "notes": ["short note"]
 }
 
-Use full-file replacement content for every edited file. If a file should be created, include its full content. If you need dependencies, edit package.json and include "npm install" as a command.`;
+Use full-file replacement content for every edited file. For .json paths, content may be a native JSON object and the worker will serialize it. All other content must be a string. If a file should be created, include its full content. If you need dependencies, edit package.json and include "npm install" as a command.`;
 }
 
 async function createEscalationRequest(task, state, taskState, config, channel, ladder = []) {
@@ -1089,7 +1089,9 @@ async function processTask(task, config, state) {
   taskState.startedAt = taskState.startedAt || new Date().toISOString();
   state.currentTaskId = task.id;
   state.status = "running";
+  state.lastError = null;
   state.workerPid = process.pid;
+  taskState.lastError = null;
   taskState.lease = {
     pid: process.pid,
     acquiredAt: new Date().toISOString()
@@ -1303,7 +1305,11 @@ async function runLoop() {
     }
     await runOnce();
     const state = await loadState(config);
-    const wait = state.status === "gpu_busy" ? config.busySleepSeconds : config.idleSleepSeconds;
+    const wait = state.status === "gpu_busy"
+      ? config.busySleepSeconds
+      : state.status === "repair_wait"
+        ? config.repairSleepSeconds
+        : config.idleSleepSeconds;
     if (state.status === "stopped") break;
     await responsiveSleep((wait || 120) * 1000);
   }

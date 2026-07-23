@@ -16,8 +16,9 @@ proposals before applying them.
 
 ## Implementation Plan For T003
 
-1. Add `@duckdb/duckdb-wasm` through `package.json` and `npm install`; do not
-   hand-edit `package-lock.json`.
+1. Add `@duckdb/duckdb-wasm` at the registry's current `1.33.1-dev57.0`
+   `latest` tag through `package.json` and `npm install`; do not hand-edit
+   `package-lock.json`.
 2. Add a small deterministic CSV under `public/data/`.
 3. Define a typed request/response protocol under `src/workers/`.
 4. Cover initialization, demo loading, schema inspection, request ids, and
@@ -29,7 +30,6 @@ proposals before applying them.
 - `package.json`
 - `package-lock.json`
 - `public/data/demo.csv`
-- `src/workers/analytics.types.ts`
 - `src/workers/analytics.types.ts`
 - `README.md`
 
