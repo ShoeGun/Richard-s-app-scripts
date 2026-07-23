@@ -495,6 +495,14 @@ async function sleep(ms) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function responsiveSleep(totalMs) {
+  const deadline = Date.now() + totalMs;
+  while (Date.now() < deadline) {
+    if (existsSync(STOP_FILE) || existsSync(PAUSE_FILE)) return;
+    await sleep(Math.min(5000, deadline - Date.now()));
+  }
+}
+
 async function runLoop() {
   const config = await loadConfig();
   await log("Worker loop started", { host: os.hostname(), pid: process.pid });
@@ -507,7 +515,7 @@ async function runLoop() {
     const state = await loadState(config);
     const wait = state.status === "gpu_busy" ? config.busySleepSeconds : config.idleSleepSeconds;
     if (state.status === "stopped") break;
-    await sleep((wait || 120) * 1000);
+    await responsiveSleep((wait || 120) * 1000);
   }
 }
 
