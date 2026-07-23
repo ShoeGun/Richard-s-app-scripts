@@ -1,13 +1,40 @@
 {
   "version": 1,
-  "status": "new",
+  "status": "idle",
   "primaryModel": "qwen3:8b",
   "fallbackModel": "qwen2.5-coder:7b",
   "contextTokens": 16384,
   "maxRepairCycles": 3,
-  "lastHeartbeat": null,
+  "lastHeartbeat": "2026-07-23T04:50:21.138Z",
   "currentTaskId": null,
   "lastError": null,
-  "benchmark": null,
-  "taskStates": {}
+  "benchmark": {
+    "completedAt": "2026-07-23T04:50:21.137Z",
+    "results": [
+      {
+        "model": "qwen3:8b",
+        "elapsedMs": 24182,
+        "cpuOnly": true,
+        "ok": true,
+        "response": "function add(a: number, b: number): number { return a + b; }"
+      },
+      {
+        "model": "qwen2.5-coder:7b",
+        "elapsedMs": 9909,
+        "cpuOnly": true,
+        "ok": true,
+        "response": "```typescript\nfunction add(a: number, b: number): number {\n    return a + b;\n}\n```"
+      }
+    ]
+  },
+  "taskStates": {},
+  "smokeEdit": {
+    "completedAt": "2026-07-23T04:49:35.522Z",
+    "commit": "SMOKE: Qwen edit proof",
+    "review": {
+      "pass": true,
+      "notes": "Added log entry for validation command execution in smoke test",
+      "risk": "low"
+    }
+  }
 }
