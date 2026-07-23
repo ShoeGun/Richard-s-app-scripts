@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "companyId": "84a77b85-952c-436a-90a0-a353e06715a5",
+  "projectId": "6cc0f6eb-9c89-4933-a870-8cd61efb6ac3",
+  "goalId": "19b1ed7b-0c63-41a0-b0b3-7e7164f61b73",
+  "paperclipApiBase": "http://127.0.0.1:3100",
+  "paperclipProjectName": "AI Lab Operations",
+  "loopTitle": "EdgeOps Qwen Worker Loop",
+  "syncPaperclip": true,
+  "syncIntervalSeconds": 300,
+  "commentCooldownSeconds": 900,
+  "maxCommentChars": 5000,
+  "agenticWorklogPath": "LOOPS/edgeops-worker-loop.md",
+  "statePath": "LOOPS/edgeops-worker-loop.json"
+}
+

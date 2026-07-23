@@ -298,8 +298,40 @@ async function applyEdits(edits) {
   for (const edit of edits) {
     const safe = relativeSafePath(edit.path);
     if (typeof edit.content !== "string") throw new Error(`Edit for ${edit.path} is missing string content.`);
+    validateEditContent(safe.normalized, edit.content);
     await fs.mkdir(path.dirname(safe.absolute), { recursive: true });
     await fs.writeFile(safe.absolute, edit.content, "utf8");
+  }
+}
+
+function validateEditContent(relativePath, content) {
+  const trimmed = content.trim();
+  const placeholderPatterns = [
+    /^see attached/i,
+    /add your .* here/i,
+    /keep existing .* styles/i,
+    /keep existing .* components/i,
+    /remove this file or replace/i,
+    /\.\.\. keep existing/i,
+    /\{\s*\/\*\s*add your/i
+  ];
+  const matched = placeholderPatterns.find((pattern) => pattern.test(trimmed));
+  if (matched) {
+    throw new Error(`Rejected placeholder edit for ${relativePath}: ${matched}`);
+  }
+  if (relativePath.endsWith(".json")) {
+    try {
+      JSON.parse(content);
+    } catch (error) {
+      throw new Error(`Rejected invalid JSON for ${relativePath}: ${error.message}`);
+    }
+  }
+  if (relativePath === "package.json") {
+    try {
+      JSON.parse(content);
+    } catch (error) {
+      throw new Error(`Rejected invalid package.json: ${error.message}`);
+    }
   }
 }
 

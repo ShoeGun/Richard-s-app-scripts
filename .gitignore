@@ -4,8 +4,9 @@ coverage/
 .vite/
 .worker-control/
 worker/logs/
+LOOPS/edgeops-worker-loop.*
+LOOPS/loop-bridge-state.json
 *.log
 .env
 .env.*
 !.env.example
-
