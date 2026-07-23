@@ -1,14 +1,33 @@
 {
-  "name": "shoegun-github-io-edgeops-worker",
+  "name": "shoegun-github-io",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "worker:doctor": "node worker/qwen-worker.mjs --doctor",
-    "worker:status": "node worker/qwen-worker.mjs --status",
-    "worker:once": "node worker/qwen-worker.mjs --once",
-    "worker:loop": "node worker/qwen-worker.mjs --loop",
-    "worker:smoke-edit": "node worker/qwen-worker.mjs --smoke-edit",
-    "worker:benchmark": "node worker/qwen-worker.mjs --benchmark"
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings=0",
+    "test": "vitest run --environment jsdom"
+  },
+  "dependencies": {
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "6.4.2",
+    "@testing-library/react": "14.2.1",
+    "@types/node": "20.11.11",
+    "@types/react": "18.2.48",
+    "@types/react-dom": "18.2.18",
+    "@typescript-eslint/eslint-plugin": "5.44.0",
+    "@typescript-eslint/parser": "5.44.0",
+    "@vitejs/plugin-react": "4.3.4",
+    "eslint": "8.56.0",
+    "jsdom": "24.0.0",
+    "typescript": "5.0.4",
+    "vite": "4.4.5",
+    "vitest": "0.34.6"
   }
 }

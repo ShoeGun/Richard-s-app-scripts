@@ -89,9 +89,43 @@ function taskStatus(workerState, taskId) {
   return workerState.taskStates?.[taskId]?.status || "pending";
 }
 
+function summarizeEscalationConfig(workerConfig, workerState) {
+  const escalation = workerConfig.escalation || {};
+  const channels = new Map();
+  for (const channel of escalation.frontierChannels || []) channels.set(channel.id, channel);
+  for (const channel of escalation.localChannels || []) channels.set(channel.id, channel);
+  for (const channel of escalation.channels || []) channels.set(channel.id, channel);
+  const ladder = (escalation.ladder || []).map((id) => {
+    const channel = channels.get(id);
+    return {
+      id,
+      type: channel?.type || null,
+      model: channel?.model || null,
+      enabled: channel?.enabled !== false,
+      autoInvoke: channel?.autoInvoke === true,
+      reasoningEffort: channel?.reasoningEffort || null
+    };
+  });
+  const active = Object.entries(workerState.taskStates || {})
+    .filter(([, taskState]) => taskState.status === "awaiting_escalation")
+    .map(([taskId, taskState]) => ({
+      taskId,
+      channel: taskState.escalationChannel || null,
+      ladderIndex: taskState.escalationLadderIndex ?? null,
+      autoInvoke: taskState.escalationAutoInvoke === true,
+      requestPath: taskState.escalationRequestPath || null
+    }));
+  return {
+    enabled: escalation.enabled === true,
+    ladder,
+    active
+  };
+}
+
 async function collectSnapshot() {
   const config = await loadConfig();
   const workerState = await readJson(path.join(ROOT, "WORKER_STATE.json"), {});
+  const workerConfig = await readJson(path.join(ROOT, "worker", "config.json"), {});
   const bridgeState = await readJson(BRIDGE_STATE_PATH, {});
   const tasks = await extractTasks().catch(() => []);
   const gitStatus = await execText("git", ["status", "--short"], 30000).catch((error) => error.output || error.message);
@@ -170,6 +204,7 @@ async function collectSnapshot() {
       nextReady: nextReady ? { id: nextReady.id, title: nextReady.title } : null
     },
     loopEngineering: {
+      escalation: summarizeEscalationConfig(workerConfig, workerState),
       promptQualityFindings,
       nextImprovement: promptQualityFindings.length
         ? "Tighten worker edit contract and recover blocked T001 before resuming dependent tasks."
@@ -189,6 +224,7 @@ function fingerprint(snapshot) {
     counts: snapshot.tasks.counts,
     blocked: snapshot.tasks.blocked.map((task) => [task.id, task.lastError.slice(0, 400)]),
     awaitingEscalation: snapshot.tasks.awaitingEscalation.map((task) => [task.id, task.requestPath, task.lastError.slice(0, 400)]),
+    escalation: snapshot.loopEngineering.escalation,
     git: snapshot.git.status
   });
 }
@@ -200,6 +236,9 @@ function renderMarkdown(snapshot) {
   const awaitingLines = snapshot.tasks.awaitingEscalation.length
     ? snapshot.tasks.awaitingEscalation.map((task) => `- ${task.id}: ${task.title}\n  - Channel: ${task.channel || "manual"}\n  - Request: \`${task.requestPath || "not written"}\``).join("\n")
     : "- None";
+  const ladderLines = snapshot.loopEngineering.escalation?.ladder?.length
+    ? snapshot.loopEngineering.escalation.ladder.map((channel, index) => `- ${index + 1}. ${channel.id} (${channel.model || channel.type || "manual"}) auto=${channel.autoInvoke ? "yes" : "no"} effort=${channel.reasoningEffort || "n/a"}`).join("\n")
+    : "- No escalation ladder configured.";
 
   return `# EdgeOps Qwen Worker Loop
 
@@ -240,6 +279,10 @@ ${blockedLines}
 ## Awaiting Escalation
 
 ${awaitingLines}
+
+## Escalation Ladder
+
+${ladderLines}
 
 ## Loop Engineering Findings
 
@@ -314,7 +357,8 @@ async function maybeSyncPaperclip(snapshot, config, bridgeState, fp, forceCommen
   const shouldComment = forceComment || bridgeState.lastFingerprint !== fp || !bridgeState.lastPaperclipCommentAt || now - Date.parse(bridgeState.lastPaperclipCommentAt) > cooldownMs;
 
   const status = snapshot.tasks.blocked.length || snapshot.tasks.awaitingEscalation.length ? "blocked" : "todo";
-  const description = `Control issue for the local EdgeOps Qwen worker loop.\n\nLatest state: ${snapshot.worker.status}\nTask counts: ${JSON.stringify(snapshot.tasks.counts)}\nLocal ledger: ${snapshot.project}\\LOOPS\\edgeops-worker-loop.md\n\nNo pushes or deployments are performed by this bridge.`;
+  const ladder = snapshot.loopEngineering.escalation?.ladder?.map((channel) => channel.id).join(" -> ") || "not configured";
+  const description = `Control issue for the local EdgeOps Qwen worker loop.\n\nLatest state: ${snapshot.worker.status}\nTask counts: ${JSON.stringify(snapshot.tasks.counts)}\nEscalation ladder: ${ladder}\nLocal ledger: ${snapshot.project}\\LOOPS\\edgeops-worker-loop.md\n\nNo pushes or deployments are performed by this bridge.`;
   await paperclipRequest(config, "PATCH", `/api/issues/${issueId}`, { status, description }).catch(() => {});
 
   if (shouldComment) {

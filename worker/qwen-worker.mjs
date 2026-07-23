@@ -21,6 +21,7 @@ const ESCALATION_OUTBOX = path.join(ESCALATIONS_DIR, "outbox");
 const ESCALATION_INBOX = path.join(ESCALATIONS_DIR, "inbox");
 const ESCALATION_PROCESSED = path.join(ESCALATIONS_DIR, "processed");
 const ESCALATION_LOCAL = path.join(ESCALATIONS_DIR, "local");
+const ESCALATION_FRONTIER = path.join(ESCALATIONS_DIR, "frontier");
 
 const argv = new Set(process.argv.slice(2));
 
@@ -250,6 +251,31 @@ function execText(command, args = [], timeoutMs = 30000) {
   });
 }
 
+function execWithInput(command, args = [], input = "", timeoutMs = 30000) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      cwd: ROOT,
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+      stderr += `\nTimed out after ${timeoutMs}ms.`;
+    }, timeoutMs);
+    child.stdout.on("data", (data) => { stdout += data.toString(); });
+    child.stderr.on("data", (data) => { stderr += data.toString(); });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolve({ command, args, code: timedOut ? -1 : code, stdout: stdout.slice(-12000), stderr: stderr.slice(-12000) });
+    });
+    child.stdin.end(input);
+  });
+}
+
 async function ollamaGenerate(config, model, prompt, timeoutMs = 20 * 60 * 1000, extraOptions = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -333,12 +359,37 @@ function runCommand(command, timeoutMs = 10 * 60 * 1000) {
 
 async function applyEdits(edits) {
   if (!Array.isArray(edits)) throw new Error("Model JSON must include edits array.");
+  const planned = [];
   for (const edit of edits) {
     const safe = relativeSafePath(edit.path);
     if (typeof edit.content !== "string") throw new Error(`Edit for ${edit.path} is missing string content.`);
     validateEditContent(safe.normalized, edit.content);
+    planned.push({ edit, safe });
+  }
+
+  const backups = [];
+  for (const { edit, safe } of planned) {
+    const existed = existsSync(safe.absolute);
+    backups.push({
+      path: safe.normalized,
+      absolute: safe.absolute,
+      existed,
+      content: existed ? await fs.readFile(safe.absolute, "utf8") : null
+    });
     await fs.mkdir(path.dirname(safe.absolute), { recursive: true });
     await fs.writeFile(safe.absolute, edit.content, "utf8");
+  }
+  return backups;
+}
+
+async function restoreEditBackups(backups) {
+  for (const backup of [...backups].reverse()) {
+    if (backup.existed) {
+      await fs.mkdir(path.dirname(backup.absolute), { recursive: true });
+      await fs.writeFile(backup.absolute, backup.content, "utf8");
+    } else {
+      await fs.rm(backup.absolute, { force: true });
+    }
   }
 }
 
@@ -432,7 +483,132 @@ async function readOperatorContext(taskId) {
   };
 }
 
-async function consumeEscalationAnswers(state) {
+function normalizeLegacyChannelId(channelId) {
+  const aliases = {
+    "chatgpt-5.4-manual": "gpt-5.4",
+    "chatgpt-5.6-manual": "gpt-5.6"
+  };
+  return aliases[channelId] || channelId;
+}
+
+function allEscalationChannels(config) {
+  const escalation = config.escalation || {};
+  const channels = new Map();
+
+  function add(channel, defaults = {}) {
+    if (!channel?.id) return;
+    channels.set(channel.id, {
+      enabled: true,
+      autoInvoke: false,
+      ...defaults,
+      ...channel
+    });
+  }
+
+  if (escalation.manualFrontierChannel) {
+    add(escalation.manualFrontierChannel, { type: "manual", aliases: ["gpt-5.4"] });
+  }
+  for (const channel of escalation.frontierChannels || []) add(channel, { type: "codex" });
+  for (const channel of escalation.localChannels || []) add(channel, { type: "ollama" });
+  for (const channel of escalation.channels || []) add(channel);
+
+  return [...channels.values()];
+}
+
+function channelMatches(channel, channelId) {
+  if (!channel || !channelId) return false;
+  const normalized = normalizeLegacyChannelId(channelId);
+  return channel.id === channelId || channel.id === normalized || (channel.aliases || []).includes(channelId) || (channel.aliases || []).includes(normalized);
+}
+
+function escalationLadder(config) {
+  const escalation = config.escalation || {};
+  const channels = allEscalationChannels(config);
+  const configuredIds = Array.isArray(escalation.ladder) && escalation.ladder.length
+    ? escalation.ladder
+    : [
+        escalation.manualFrontierChannel?.id,
+        ...channels.filter((channel) => channel.type === "codex").map((channel) => channel.id),
+        ...channels.filter((channel) => channel.type === "ollama").map((channel) => channel.id)
+      ].filter(Boolean);
+
+  const ladder = [];
+  for (const id of configuredIds) {
+    const channel = channels.find((item) => item.id === id) || channels.find((item) => channelMatches(item, id));
+    if (channel && channel.enabled !== false && !ladder.some((item) => item.id === channel.id)) {
+      ladder.push(channel);
+    }
+  }
+  return ladder;
+}
+
+function findEscalationIndex(ladder, channelId) {
+  return ladder.findIndex((channel) => channelMatches(channel, channelId));
+}
+
+function selectEscalationChannel(config, taskState) {
+  const ladder = escalationLadder(config);
+  if (!ladder.length) return { channel: null, index: -1, ladder };
+
+  let index = 0;
+  if (taskState.escalationAnswerChannel) {
+    const answeredIndex = findEscalationIndex(ladder, taskState.escalationAnswerChannel);
+    index = answeredIndex >= 0 ? answeredIndex + 1 : (Number.isInteger(taskState.escalationLadderIndex) ? taskState.escalationLadderIndex + 1 : 0);
+  } else if (taskState.escalationChannel) {
+    const activeIndex = findEscalationIndex(ladder, taskState.escalationChannel);
+    index = activeIndex >= 0 ? activeIndex : 0;
+  } else if (Number.isInteger(taskState.escalationLadderIndex)) {
+    index = taskState.escalationLadderIndex;
+  }
+
+  return { channel: ladder[index] || null, index, ladder };
+}
+
+function channelLabel(channel) {
+  if (!channel) return "none";
+  const model = channel.model ? ` (${channel.model})` : "";
+  return `${channel.label || channel.id}${model}`;
+}
+
+function appendEscalationHistory(taskState, event) {
+  taskState.escalationHistory = Array.isArray(taskState.escalationHistory) ? taskState.escalationHistory : [];
+  taskState.escalationHistory.push({ at: new Date().toISOString(), ...event });
+  taskState.escalationHistory = taskState.escalationHistory.slice(-12);
+}
+
+function parseAnswerChannelId(answer) {
+  const match = String(answer || "").match(/^Channel:\s*([^\r\n]+)/im);
+  return match ? match[1].trim() : null;
+}
+
+async function recordEscalationAnswer(task, taskState, channel, answer, answerPath) {
+  const body = `# Escalation Answer: ${task.id}
+
+Channel: ${channel.id}
+
+Model: ${channel.model || "manual"}
+
+Created: ${new Date().toISOString()}
+
+${answer}
+`;
+  const finalPath = answerPath || path.join(ESCALATION_PROCESSED, `${new Date().toISOString().replace(/[:.]/g, "-")}-${task.id}-${channel.id}.md`);
+  await fs.mkdir(path.dirname(finalPath), { recursive: true });
+  if (!answerPath) await fs.writeFile(finalPath, body, "utf8");
+
+  taskState.status = "pending";
+  taskState.repairCycles = 0;
+  taskState.escalationAnswer = body.slice(0, 20000);
+  taskState.escalationAnswerChannel = channel.id;
+  taskState.escalationAnswerPath = finalPath;
+  taskState.escalationResolvedAt = new Date().toISOString();
+  taskState.lastError = null;
+  delete taskState.escalationAutoInvokeError;
+  appendEscalationHistory(taskState, { event: "answered", channelId: channel.id, answerPath: finalPath });
+  return finalPath;
+}
+
+async function consumeEscalationAnswers(tasks, state, config) {
   await fs.mkdir(ESCALATION_INBOX, { recursive: true });
   await fs.mkdir(ESCALATION_PROCESSED, { recursive: true });
   const entries = await fs.readdir(ESCALATION_INBOX, { withFileTypes: true }).catch(() => []);
@@ -441,21 +617,25 @@ async function consumeEscalationAnswers(state) {
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".md")) continue;
     const taskId = entry.name.replace(/\.md$/i, "").split(".")[0];
+    const task = tasks.find((item) => item.id === taskId);
     const taskState = state.taskStates[taskId];
-    if (!taskState || !["awaiting_escalation", "blocked"].includes(taskState.status)) continue;
+    if (!task || !taskState || !["awaiting_escalation", "blocked"].includes(taskState.status)) continue;
 
     const source = path.join(ESCALATION_INBOX, entry.name);
     const answer = await fs.readFile(source, "utf8");
-    taskState.status = "pending";
-    taskState.repairCycles = 0;
-    taskState.escalationAnswer = answer.slice(0, 20000);
-    taskState.escalationResolvedAt = new Date().toISOString();
-    taskState.lastError = null;
+    const ladder = escalationLadder(config);
+    const answerChannelId = parseAnswerChannelId(answer);
+    const channel = ladder.find((item) => channelMatches(item, answerChannelId) || channelMatches(item, taskState.escalationChannel)) || {
+      id: normalizeLegacyChannelId(taskState.escalationChannel || "manual"),
+      type: "manual",
+      label: "Manual escalation answer"
+    };
     state.lastError = null;
     state.status = "idle";
 
     const target = path.join(ESCALATION_PROCESSED, `${new Date().toISOString().replace(/[:.]/g, "-")}-${entry.name}`);
     await fs.rename(source, target);
+    await recordEscalationAnswer(task, taskState, channel, answer, target);
     await log(`Consumed escalation answer for ${taskId}`, { source: entry.name });
     consumed += 1;
   }
@@ -469,18 +649,53 @@ async function normalizeBlockedTasksToEscalations(tasks, state, config) {
     const taskState = state.taskStates[task.id];
     if (!taskState || taskState.status !== "blocked" || taskState.escalationRequestedAt) continue;
     if (!config.escalation?.enabled) continue;
-    const request = await createEscalationRequest(task, state, taskState, config);
-    taskState.status = "awaiting_escalation";
-    taskState.escalationRequestedAt = request.createdAt;
-    taskState.escalationRequestPath = request.latestPath;
-    taskState.escalationChannel = config.escalation.manualFrontierChannel?.id || "manual";
-    state.status = "awaiting_escalation";
-    state.currentTaskId = null;
-    state.lastError = `Awaiting escalation answer for ${task.id}: ${request.latestPath}`;
+    await requestEscalation(task, state, taskState, config, "legacy-blocked-task");
     changed = true;
-    await log(`Converted blocked task ${task.id} to awaiting escalation`, { request: request.latestPath });
+    await log(`Converted blocked task ${task.id} to awaiting escalation`, { request: taskState.escalationRequestPath });
   }
   return changed;
+}
+
+async function autoInvokeAwaitingEscalations(tasks, state, config) {
+  if (!config.escalation?.enabled) return 0;
+  let invoked = 0;
+  for (const task of tasks) {
+    const taskState = state.taskStates[task.id];
+    if (!taskState || taskState.status !== "awaiting_escalation") continue;
+
+    const ladder = escalationLadder(config);
+    const channel = ladder.find((item) => channelMatches(item, taskState.escalationChannel)) || selectEscalationChannel(config, taskState).channel;
+    if (!channel?.autoInvoke) continue;
+    if (taskState.escalationAnswerChannel && taskState.escalationResolvedAt && channelMatches(channel, taskState.escalationAnswerChannel)) continue;
+
+    let requestPath = taskState.escalationRequestPath;
+    if (!requestPath || !existsSync(requestPath)) {
+      const request = await createEscalationRequest(task, state, taskState, config, channel, ladder);
+      requestPath = request.latestPath;
+      taskState.escalationRequestPath = request.latestPath;
+      taskState.escalationRequestedAt = request.createdAt;
+    }
+
+    await log(`Auto-invoking pending escalation channel ${channel.id} for ${task.id}`, { model: channel.model || channel.type });
+    try {
+      const result = await invokeEscalationChannel(config, task, channel, requestPath);
+      if (result?.answer) {
+        const answerPath = await recordEscalationAnswer(task, taskState, channel, result.answer, result.answerPath);
+        taskState.escalationChannel = channel.id;
+        state.status = "idle";
+        state.lastError = null;
+        appendEscalationHistory(taskState, { event: "auto-answer", channelId: channel.id, answerPath });
+        invoked += 1;
+      }
+    } catch (error) {
+      taskState.escalationAutoInvokeError = String(error.stack || error.message || error).slice(0, 4000);
+      appendEscalationHistory(taskState, { event: "auto-invoke-failed", channelId: channel.id, error: taskState.escalationAutoInvokeError });
+      state.status = "awaiting_escalation";
+      state.lastError = `Auto escalation failed for ${task.id} via ${channel.id}; awaiting manual answer.`;
+      await log(`Auto escalation failed for ${task.id}`, { channel: channel.id, error: taskState.escalationAutoInvokeError });
+    }
+  }
+  return invoked;
 }
 
 function buildTaskPrompt(task, state, tree, focusFiles, operatorContext) {
@@ -530,7 +745,7 @@ Return only JSON with this shape:
 Use full-file replacement content for every edited file. If a file should be created, include its full content. If you need dependencies, edit package.json and include "npm install" as a command.`;
 }
 
-async function createEscalationRequest(task, state, taskState, config) {
+async function createEscalationRequest(task, state, taskState, config, channel, ladder = []) {
   await fs.mkdir(ESCALATION_OUTBOX, { recursive: true });
   const diffSummary = await gitDiffSummary();
   const operatorContext = await readOperatorContext(task.id);
@@ -538,16 +753,24 @@ async function createEscalationRequest(task, state, taskState, config) {
   const safeStamp = createdAt.replace(/[:.]/g, "-");
   const latestPath = path.join(ESCALATION_OUTBOX, `${task.id}.md`);
   const archivePath = path.join(ESCALATION_OUTBOX, `${safeStamp}-${task.id}.md`);
-  const manual = config.escalation?.manualFrontierChannel || {};
+  const targetChannel = channel || config.escalation?.manualFrontierChannel || { id: "manual", label: "Manual escalation" };
+  const ladderText = ladder.length ? ladder.map((item) => item.id).join(" -> ") : targetChannel.id;
+  const historyText = Array.isArray(taskState.escalationHistory) && taskState.escalationHistory.length
+    ? JSON.stringify(taskState.escalationHistory.slice(-6), null, 2)
+    : "[]";
   const body = `# Escalation Request: ${task.id} - ${task.title}
 
 Created: ${createdAt}
 
-Preferred frontier channel: ${manual.label || manual.id || "manual ChatGPT"}
+Requested channel: ${channelLabel(targetChannel)}
+
+Escalation ladder: ${ladderText}
+
+Previous answered channel: ${taskState.escalationAnswerChannel || "none"}
 
 ## What I Need
 
-Please unblock the local worker with a compact, implementation-oriented answer. Do not rewrite the whole project. Give:
+Please unblock the local worker with a compact, implementation-oriented answer. Use sparse foundational inference: do not rewrite the whole project, do not include huge file dumps, and do not spend tokens on generic explanation. Give:
 
 1. Diagnosis of why the local model failed.
 2. A minimal recovery plan.
@@ -556,6 +779,12 @@ Please unblock the local worker with a compact, implementation-oriented answer. 
 5. Red flags the local worker must avoid.
 
 The answer will be saved to \`ESCALATIONS/inbox/${task.id}.md\` and injected into the next local-model prompt.
+
+## Channel Instructions
+
+\`\`\`text
+${targetChannel.instructions || "Return concise unblock guidance only. Do not edit files directly."}
+\`\`\`
 
 ## Task
 
@@ -587,6 +816,12 @@ ${operatorContext.guardrails || "(none provided)"}
 ${String(taskState.lastError || "").slice(0, 8000)}
 \`\`\`
 
+## Escalation History
+
+\`\`\`json
+${historyText}
+\`\`\`
+
 ## Git Status
 
 \`\`\`text
@@ -608,6 +843,122 @@ The next local worker response must provide complete file contents in JSON edits
   return { createdAt, latestPath };
 }
 
+async function invokeOllamaEscalation(config, task, channel, requestPath) {
+  const request = await fs.readFile(requestPath, "utf8");
+  const prompt = `${request}
+
+You are the local escalation model "${channel.id}" (${channel.model}).
+Return concise reviewer guidance only. Do not emit JSON edits. Focus on how the next worker attempt should recover safely.`;
+  const answer = await ollamaGenerate(config, channel.model, prompt, 20 * 60 * 1000, {
+    num_ctx: channel.contextTokens || config.contextTokens || 16384,
+    temperature: channel.temperature ?? 0.1
+  });
+  await unloadModel(config, channel.model);
+  await fs.mkdir(ESCALATION_LOCAL, { recursive: true });
+  const localPath = path.join(ESCALATION_LOCAL, `${new Date().toISOString().replace(/[:.]/g, "-")}-${task.id}-${channel.id}.md`);
+  await fs.writeFile(localPath, answer, "utf8");
+  return { answer, answerPath: localPath };
+}
+
+async function invokeCodexEscalation(config, task, channel, requestPath) {
+  const request = await fs.readFile(requestPath, "utf8");
+  const codexCommand = channel.command || config.escalation?.codexCommand || process.env.CODEX_CLI_PATH || "codex";
+  const timeoutMs = (channel.timeoutSeconds || 1800) * 1000;
+  const codexWorkDir = channel.workDir || config.escalation?.codexWorkDir || path.join(os.tmpdir(), "edgeops-codex-escalations");
+  await fs.mkdir(codexWorkDir, { recursive: true });
+  await fs.mkdir(ESCALATION_FRONTIER, { recursive: true });
+  const outputPath = path.join(ESCALATION_FRONTIER, `${new Date().toISOString().replace(/[:.]/g, "-")}-${task.id}-${channel.id}.md`);
+  const prompt = `${request}
+
+You are a frontier escalation agent for a local-first autonomous software loop.
+
+Rules:
+- Produce final guidance only. Do not directly edit files.
+- Prefer concise, implementation-oriented instructions over broad design prose.
+- Use the evidence in the request first. Read extra files only if absolutely necessary.
+- Keep the answer under ${channel.maxAnswerWords || 900} words.
+- Do not include secrets, tokens, raw logs, or unrelated repository content.
+`;
+  const args = [
+    "exec",
+    "-m", channel.model,
+    "-C", codexWorkDir,
+    "--skip-git-repo-check",
+    "--sandbox", channel.sandbox || "read-only",
+    "--ephemeral",
+    "-o", outputPath
+  ];
+  if (channel.ignoreRules !== false) args.push("--ignore-rules");
+  if (channel.ignoreUserConfig !== false) args.push("--ignore-user-config");
+  args.push("-c", "approval_policy=\"never\"");
+  if (channel.reasoningEffort) args.push("-c", `model_reasoning_effort="${channel.reasoningEffort}"`);
+  args.push("-");
+
+  const result = await execWithInput(codexCommand, args, prompt, timeoutMs);
+  if (result.code !== 0) {
+    throw new Error(`Codex escalation ${channel.id} failed with exit ${result.code}: ${result.stderr || result.stdout}`);
+  }
+  const answer = (await readOptionalText(outputPath, 40000)) || result.stdout;
+  if (!answer.trim()) throw new Error(`Codex escalation ${channel.id} produced an empty answer.`);
+  return { answer, answerPath: outputPath };
+}
+
+async function invokeEscalationChannel(config, task, channel, requestPath) {
+  if (channel.type === "ollama") return invokeOllamaEscalation(config, task, channel, requestPath);
+  if (channel.type === "codex") return invokeCodexEscalation(config, task, channel, requestPath);
+  return null;
+}
+
+async function requestEscalation(task, state, taskState, config, reason) {
+  const selected = selectEscalationChannel(config, taskState);
+  const channel = selected.channel;
+  if (!channel) {
+    taskState.status = "blocked";
+    taskState.blockedAt = new Date().toISOString();
+    state.status = "blocked";
+    state.currentTaskId = null;
+    state.lastError = `Escalation ladder exhausted for ${task.id}.`;
+    appendEscalationHistory(taskState, { event: "ladder-exhausted", reason });
+    await appendFile(path.join(ROOT, "BLOCKERS.md"), `\n## ${task.id}: ${task.title}\n\nEscalation ladder exhausted.\n\n${taskState.lastError || ""}\n`);
+    return { status: "blocked" };
+  }
+
+  const request = await createEscalationRequest(task, state, taskState, config, channel, selected.ladder);
+  taskState.status = "awaiting_escalation";
+  taskState.escalationRequestedAt = request.createdAt;
+  taskState.escalationRequestPath = request.latestPath;
+  taskState.escalationChannel = channel.id;
+  taskState.escalationLadderIndex = selected.index;
+  taskState.escalationAutoInvoke = channel.autoInvoke === true;
+  state.status = "awaiting_escalation";
+  state.currentTaskId = null;
+  state.lastError = `Awaiting escalation answer for ${task.id} via ${channel.id}.`;
+  appendEscalationHistory(taskState, { event: "requested", channelId: channel.id, requestPath: request.latestPath, reason });
+
+  if (channel.autoInvoke === true) {
+    const invokedAt = new Date().toISOString();
+    await log(`Auto-invoking escalation channel ${channel.id} for ${task.id}`, { model: channel.model || channel.type });
+    try {
+      const result = await invokeEscalationChannel(config, task, channel, request.latestPath);
+      if (result?.answer) {
+        const answerPath = await recordEscalationAnswer(task, taskState, channel, result.answer, result.answerPath);
+        state.status = "idle";
+        state.lastError = null;
+        appendEscalationHistory(taskState, { event: "auto-answer", channelId: channel.id, invokedAt, answerPath });
+        await log(`Auto escalation answered ${task.id}`, { channel: channel.id, answerPath });
+        return { status: "answered", channel, request };
+      }
+    } catch (error) {
+      taskState.escalationAutoInvokeError = String(error.stack || error.message || error).slice(0, 4000);
+      appendEscalationHistory(taskState, { event: "auto-invoke-failed", channelId: channel.id, error: taskState.escalationAutoInvokeError });
+      await log(`Auto escalation failed for ${task.id}`, { channel: channel.id, error: taskState.escalationAutoInvokeError });
+    }
+  }
+
+  await appendFile(path.join(ROOT, "BLOCKERS.md"), `\n## ${task.id}: ${task.title}\n\nAwaiting escalation answer via ${channel.id}: ${request.latestPath}\n\n${taskState.lastError || ""}\n`);
+  return { status: "awaiting_escalation", channel, request };
+}
+
 async function runLocalEscalation() {
   const taskId = process.argv[process.argv.indexOf("--escalate") + 1];
   if (!taskId || taskId.startsWith("--")) throw new Error("Use --escalate <TASK_ID>.");
@@ -621,44 +972,40 @@ async function runLocalEscalation() {
   const taskState = state.taskStates[taskId] || { status: "awaiting_escalation", attempts: 0, repairCycles: 0 };
   state.taskStates[taskId] = taskState;
 
-  const channels = config.escalation?.localChannels || [];
-  const channel = channels.find((item) => item.enabled && (!channelId || item.id === channelId));
-  if (!channel) throw new Error(`No enabled local escalation channel${channelId ? ` named ${channelId}` : ""}.`);
-  if (channel.type !== "ollama") throw new Error(`Unsupported local escalation channel type: ${channel.type}`);
+  const channels = allEscalationChannels(config);
+  const channel = channels.find((item) => item.enabled !== false && (!channelId || channelMatches(item, channelId)));
+  if (!channel) throw new Error(`No enabled escalation channel${channelId ? ` named ${channelId}` : ""}.`);
 
   let request = await readOptionalText(path.join(ESCALATION_OUTBOX, `${taskId}.md`), 40000);
+  let requestPath = path.join(ESCALATION_OUTBOX, `${taskId}.md`);
   if (!request) {
-    const created = await createEscalationRequest(task, state, taskState, config);
+    const created = await createEscalationRequest(task, state, taskState, config, channel, escalationLadder(config));
+    requestPath = created.latestPath;
     request = await fs.readFile(created.latestPath, "utf8");
   }
 
-  await fs.mkdir(ESCALATION_LOCAL, { recursive: true });
-  await fs.mkdir(ESCALATION_INBOX, { recursive: true });
-  const prompt = `${request}
+  if (request && !existsSync(requestPath)) {
+    await fs.mkdir(ESCALATION_OUTBOX, { recursive: true });
+    await fs.writeFile(requestPath, request, "utf8");
+  }
 
-You are the local escalation model "${channel.id}" (${channel.model}).
-Return concise reviewer guidance only. Do not emit JSON edits. Focus on how the next worker attempt should recover safely.`;
-  const answer = await ollamaGenerate(config, channel.model, prompt, 20 * 60 * 1000, {
-    num_ctx: channel.contextTokens || config.contextTokens || 16384,
-    temperature: channel.temperature ?? 0.1
-  });
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const localPath = path.join(ESCALATION_LOCAL, `${stamp}-${taskId}-${channel.id}.md`);
+  const result = await invokeEscalationChannel(config, task, channel, requestPath);
+  if (!result?.answer) throw new Error(`Channel ${channel.id} is manual-only; open ${requestPath} and save an answer into ESCALATIONS/inbox/${taskId}.md.`);
+
+  await fs.mkdir(ESCALATION_INBOX, { recursive: true });
   const inboxPath = path.join(ESCALATION_INBOX, `${taskId}.md`);
-  const body = `# Local Escalation Answer: ${taskId}
+  const body = `# Escalation Answer: ${taskId}
 
 Channel: ${channel.id}
 
-Model: ${channel.model}
+Model: ${channel.model || "manual"}
 
 Created: ${new Date().toISOString()}
 
-${answer}
+${result.answer}
 `;
-  await fs.writeFile(localPath, body, "utf8");
   await fs.writeFile(inboxPath, body, "utf8");
-  await unloadModel(config, channel.model);
-  console.log(JSON.stringify({ ok: true, taskId, channel: channel.id, model: channel.model, inboxPath, localPath }, null, 2));
+  console.log(JSON.stringify({ ok: true, taskId, channel: channel.id, model: channel.model || channel.type, inboxPath, answerPath: result.answerPath }, null, 2));
 }
 
 async function processTask(task, config, state) {
@@ -674,6 +1021,7 @@ async function processTask(task, config, state) {
   const model = taskState.repairCycles > 0 ? state.fallbackModel : state.primaryModel;
   await log(`Starting task ${task.id} with ${model}`);
 
+  let editBackups = [];
   try {
     const tree = await listTree();
     const focusFiles = await readFocusFiles(task);
@@ -682,7 +1030,7 @@ async function processTask(task, config, state) {
     const raw = await ollamaGenerate(config, model, prompt);
     await appendFile(DETAIL_LOG, `\n[model:${model}] task ${task.id}\n${raw}\n`);
     const action = extractJsonObject(raw);
-    await applyEdits(action.edits || []);
+    editBackups = await applyEdits(action.edits || []);
 
     const modelCommands = Array.isArray(action.commands) ? action.commands : [];
     const commands = [...modelCommands, ...(task.validation || [])];
@@ -707,6 +1055,10 @@ async function processTask(task, config, state) {
     await saveState(state);
     await log(`Completed task ${task.id}`, { commit, review });
   } catch (error) {
+    if (editBackups.length && config.restoreFailedAttemptEdits !== false) {
+      await restoreEditBackups(editBackups);
+      await log(`Restored failed edit attempt for ${task.id}`, { files: editBackups.map((backup) => backup.path) });
+    }
     taskState.status = "pending";
     taskState.repairCycles = (taskState.repairCycles || 0) + 1;
     taskState.lastError = String(error.stack || error.message || error).slice(0, 8000);
@@ -715,13 +1067,11 @@ async function processTask(task, config, state) {
 
     if (taskState.repairCycles >= (state.maxRepairCycles || 3)) {
       if (config.escalation?.enabled) {
-        const request = await createEscalationRequest(task, state, taskState, config);
-        taskState.status = "awaiting_escalation";
-        taskState.escalationRequestedAt = request.createdAt;
-        taskState.escalationRequestPath = request.latestPath;
-        taskState.escalationChannel = config.escalation.manualFrontierChannel?.id || "manual";
-        await appendFile(path.join(ROOT, "BLOCKERS.md"), `\n## ${task.id}: ${task.title}\n\nAwaiting escalation answer: ${request.latestPath}\n\n${taskState.lastError}\n`);
-        await log(`Task ${task.id} awaiting escalation`, { request: request.latestPath, error: taskState.lastError });
+        if (taskState.escalationAnswerChannel) {
+          appendEscalationHistory(taskState, { event: "post-answer-failed", channelId: taskState.escalationAnswerChannel, error: taskState.lastError });
+        }
+        const result = await requestEscalation(task, state, taskState, config, "max-repair-cycles");
+        await log(`Task ${task.id} escalation result`, { status: result.status, channel: result.channel?.id, request: result.request?.latestPath, error: taskState.lastError });
       } else {
         taskState.status = "blocked";
         taskState.blockedAt = new Date().toISOString();
@@ -732,7 +1082,9 @@ async function processTask(task, config, state) {
       await log(`Task ${task.id} needs repair`, { repairCycles: taskState.repairCycles, error: taskState.lastError });
     }
 
-    state.status = taskState.status === "blocked" || taskState.status === "awaiting_escalation" ? taskState.status : "repair_wait";
+    state.status = taskState.status === "blocked" || taskState.status === "awaiting_escalation"
+      ? taskState.status
+      : (taskState.escalationAnswerChannel ? "idle" : "repair_wait");
     await saveState(state);
   } finally {
     await unloadModel(config, model);
@@ -758,10 +1110,15 @@ async function runOnce() {
   }
 
   const tasks = await extractTasks();
-  const consumedAnswers = await consumeEscalationAnswers(state);
+  const consumedAnswers = await consumeEscalationAnswers(tasks, state, config);
   const normalizedEscalations = await normalizeBlockedTasksToEscalations(tasks, state, config);
-  if (consumedAnswers || normalizedEscalations) {
+  const autoInvokedEscalations = await autoInvokeAwaitingEscalations(tasks, state, config);
+  if (consumedAnswers || normalizedEscalations || autoInvokedEscalations) {
     await saveState(state);
+  }
+  if (autoInvokedEscalations) {
+    console.log("Escalation answer captured. The next loop iteration will resume local work.");
+    return;
   }
 
   if (allTerminal(tasks, state)) {
@@ -827,6 +1184,14 @@ async function printStatus() {
     return acc;
   }, {});
   const busy = await gpuBusy(config).catch((error) => ({ busy: null, reason: error.message }));
+  const ladder = escalationLadder(config).map((channel) => ({
+    id: channel.id,
+    type: channel.type,
+    model: channel.model || null,
+    enabled: channel.enabled !== false,
+    autoInvoke: channel.autoInvoke === true,
+    reasoningEffort: channel.reasoningEffort || null
+  }));
   console.log(JSON.stringify({
     project: ROOT,
     status: state.status,
@@ -836,6 +1201,10 @@ async function printStatus() {
     primaryModel: state.primaryModel,
     fallbackModel: state.fallbackModel,
     contextTokens: state.contextTokens,
+    escalation: {
+      enabled: config.escalation?.enabled === true,
+      ladder
+    },
     taskCounts: counts,
     gpu: busy
   }, null, 2));
@@ -848,7 +1217,8 @@ async function doctor() {
     ["git", "git", ["--version"]],
     ["node", "node", ["--version"]],
     ["npm", process.platform === "win32" ? "cmd.exe" : "npm", process.platform === "win32" ? ["/d", "/c", "npm --version"] : ["--version"]],
-    ["ollama", "ollama", ["--version"]]
+    ["ollama", "ollama", ["--version"]],
+    ["codex", config.escalation?.codexCommand || "codex", ["--version"]]
   ]) {
     try {
       checks.push({ name, ok: true, output: (await execText(command, args, 10000)).trim() });

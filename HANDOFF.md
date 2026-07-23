@@ -30,6 +30,9 @@ Local-first escalation loop:
 - Put detailed plans in `PLANS/ACTIVE_PLAN.md`.
 - Put tests in `PLANS/TEST_PATTERNS.md`.
 - Put extra constraints in `PLANS/GUARDRAILS.md`.
+- Failed local edit attempts restore touched files before retry/escalation.
 - Escalation requests are generated under `ESCALATIONS/outbox/`.
-- Save ChatGPT/frontier answers under `ESCALATIONS/inbox/<TASK_ID>.md`.
+- Default auto ladder is `gpt-5.4` then `gpt-5.6`; both run via `codex exec` in read-only mode and save compact answers under `ESCALATIONS/frontier/`.
+- Manual answers can still be saved under `ESCALATIONS/inbox/<TASK_ID>.md`.
+- Use `show-escalation-config.ps1`, `set-escalation-ladder.ps1`, `add-local-escalation-channel.ps1`, and `add-frontier-escalation-channel.ps1` to change the ladder.
 - See `LOOPS/LOCAL_FIRST_ESCALATION.md`.

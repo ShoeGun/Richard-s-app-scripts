@@ -4,6 +4,8 @@ param(
 
   [string]$Answer,
 
+  [string]$Channel,
+
   [switch]$FromClipboard
 )
 
@@ -21,6 +23,8 @@ if ([string]::IsNullOrWhiteSpace($Answer)) {
 }
 
 $Path = Join-Path $Inbox "$TaskId.md"
+if ($Channel) {
+  $Answer = "# Manual Escalation Answer: $TaskId`n`nChannel: $Channel`n`n$Answer"
+}
 Set-Content -LiteralPath $Path -Value $Answer -Encoding UTF8
 Write-Host "Saved escalation answer: $Path"
-

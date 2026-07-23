@@ -10,6 +10,7 @@ ESCALATIONS/outbox/
 ESCALATIONS/inbox/
 ESCALATIONS/processed/
 ESCALATIONS/local/
+ESCALATIONS/frontier/
 *.log
 .env
 .env.*

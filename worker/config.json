@@ -8,12 +8,46 @@
   "idleSleepSeconds": 120,
   "busySleepSeconds": 180,
   "maxRepairCycles": 3,
+  "restoreFailedAttemptEdits": true,
   "escalation": {
     "enabled": true,
+    "codexCommand": "C:\\Users\\Richard\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe",
+    "ladder": [
+      "gpt-5.4",
+      "gpt-5.6"
+    ],
+    "frontierChannels": [
+      {
+        "id": "gpt-5.4",
+        "type": "codex",
+        "model": "gpt-5.4",
+        "label": "GPT 5.4 sparse frontier unblocker",
+        "enabled": true,
+        "autoInvoke": true,
+        "reasoningEffort": "low",
+        "timeoutSeconds": 1800,
+        "sandbox": "read-only",
+        "maxAnswerWords": 900,
+        "instructions": "Use sparse foundational inference. Return concise unblock guidance only. Do not edit files directly."
+      },
+      {
+        "id": "gpt-5.6",
+        "type": "codex",
+        "model": "gpt-5.6-sol",
+        "label": "GPT 5.6 fallback frontier unblocker",
+        "enabled": true,
+        "autoInvoke": true,
+        "reasoningEffort": "medium",
+        "timeoutSeconds": 2400,
+        "sandbox": "read-only",
+        "maxAnswerWords": 1100,
+        "instructions": "Use this only after GPT 5.4 guidance failed in a local retry. Return decisive recovery guidance and concrete red flags. Do not edit files directly."
+      }
+    ],
     "manualFrontierChannel": {
       "id": "chatgpt-5.4-manual",
       "label": "ChatGPT 5.4 manual escalation",
-      "instructions": "Paste the latest ESCALATIONS/outbox request into ChatGPT 5.4. Save the answer as ESCALATIONS/inbox/<TASK_ID>.md or use answer-escalation.ps1."
+      "instructions": "Legacy manual channel. Prefer the configured ladder unless manually overriding."
     },
     "localChannels": [
       {
