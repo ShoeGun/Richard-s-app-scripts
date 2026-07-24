@@ -21,6 +21,11 @@ Agentic OS owns workflow rules and evidence gates. The scheduled worker owns one
 bounded task lease at a time. OpenClaw remains available for Paperclip-native
 agents such as Night Operator; it does not duplicate the project-local worker.
 
+Projected local-worker issues remain unassigned in Paperclip. Paperclip requires
+an assignee for `in_progress`, so their Paperclip status stays `todo` while the
+description and EdgeOps dashboard show `running`. This avoids falsely assigning
+local execution to Night Operator.
+
 ## Work Loop
 
 1. Richard edits the plan, tests, and guardrails in the dashboard.

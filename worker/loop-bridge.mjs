@@ -364,7 +364,10 @@ async function ensurePaperclipIssue(config, bridgeState) {
 
 function paperclipTaskStatus(status) {
   if (status === "completed") return "done";
-  if (status === "running") return "in_progress";
+  // Project-local workers are not Paperclip agents, and Paperclip requires an
+  // assignee for in_progress issues. Keep the projection unassigned and let the
+  // description/dashboard carry the live execution state.
+  if (status === "running") return "todo";
   if (status === "blocked" || status === "awaiting_escalation") return "blocked";
   return "todo";
 }
