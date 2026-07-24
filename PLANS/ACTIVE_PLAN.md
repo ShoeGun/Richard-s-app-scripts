@@ -2,35 +2,30 @@
 
 ## Goal
 
-Complete the newly narrowed `T003`: establish the DuckDB-Wasm dependency, demo
-dataset, and typed analytics worker protocol. `T003B` will implement the worker,
-and `T003C` will connect it to the UI.
+Complete `T003B`: repair the initial analytics protocol and implement the
+DuckDB-Wasm analytics worker. `T003C` will connect it to the UI.
 
 ## Current Context
 
-`T001` and `T002` are complete. The Vite/React/TypeScript scaffold and static UI
-shell pass the current quality gates. Prior `T003` attempts failed because the
-worker allowed out-of-focus edits, malformed JSON, directory edit paths, and
-unrelated workflow changes. The orchestration platform now rejects those
-proposals before applying them.
+`T001`, `T002`, and `T003` are complete. The first `T003` protocol omitted
+request correlation ids and used optional string errors; `T003B` must correct
+that contract before implementing the worker. The reviewer now requires
+evidence for every acceptance criterion.
 
-## Implementation Plan For T003
+## Implementation Plan For T003B
 
-1. Add `@duckdb/duckdb-wasm` at the registry's current `1.33.1-dev57.0`
-   `latest` tag through `package.json` and `npm install`; do not hand-edit
-   `package-lock.json`.
-2. Add a small deterministic CSV under `public/data/`.
-3. Define a typed request/response protocol under `src/workers/`.
-4. Cover initialization, demo loading, schema inspection, request ids, and
-   structured-clone-safe error responses in the protocol.
-5. Keep this task to foundation files; do not implement the worker or UI yet.
+1. Add a request id to every request and response variant.
+2. Replace optional string errors with a discriminated, structured-clone-safe
+   error payload; do not use `any`.
+3. Initialize DuckDB-Wasm in a Vite-managed Web Worker.
+4. Load the existing demo CSV and return its schema as clone-safe primitives.
+5. Use Vite/base-aware URLs for worker, Wasm, and public data assets.
+6. Keep the main-thread client and UI out of this task.
 
 ## Expected Files
 
-- `package.json`
-- `package-lock.json`
-- `public/data/demo.csv`
 - `src/workers/analytics.types.ts`
+- `src/workers/analytics.worker.ts`
 - `README.md`
 
 ## Do Not Touch
@@ -44,8 +39,9 @@ proposals before applying them.
 
 ## Done Criteria
 
-- DuckDB-Wasm is installed through the package manifest and lockfile.
-- Demo CSV is deterministic and contains useful mixed column types.
-- Protocol types cover every `T003B` request/response and serializable failures.
+- Every response can be correlated with its request.
+- Errors and schema data cross the worker boundary without class instances.
+- DuckDB-Wasm initializes off the main thread with production-safe asset URLs.
+- The demo CSV loads and schema inspection returns useful column names/types.
 - `npm run typecheck`, `npm run lint`, `npm run test`, and `npm run build` pass.
 - No push or deployment occurs.

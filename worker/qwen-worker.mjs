@@ -506,10 +506,21 @@ async function gitDiffSummary(paths = []) {
 async function reviewDiff(config, task, diffSummary) {
   if (!diffSummary.status.trim()) return { pass: false, notes: "Task produced no scoped file changes.", risk: "high" };
   const model = config.routing?.reviewerModel || config.reviewModel || config.fallbackModel || config.primaryModel;
+  const operatorContext = await readOperatorContext(task.id);
+  const acceptance = Array.isArray(task.acceptance) ? task.acceptance : [];
   const prompt = `You are reviewing a local Git diff for a bounded autonomous worker task.
 
 Task:
 ${JSON.stringify(task, null, 2)}
+
+Operator plan:
+${operatorContext.activePlan || "(none provided)"}
+
+Test patterns:
+${operatorContext.testPatterns || "(none provided)"}
+
+Guardrails:
+${operatorContext.guardrails || "(none provided)"}
 
 Diff stat:
 ${diffSummary.stat}
@@ -517,14 +528,28 @@ ${diffSummary.stat}
 Diff excerpt:
 ${diffSummary.diff}
 
+Review every acceptance item against concrete evidence in the diff. A passing build
+does not prove semantic acceptance. Reject missing behavior, placeholders, unsafe
+shortcuts, weak types such as any, or claims that are not visible in the diff.
+
 Return only JSON:
-{"pass":true|false,"notes":"short reason","risk":"low|medium|high"}`;
+{"pass":true|false,"notes":"short reason","risk":"low|medium|high","checks":[{"index":0,"pass":true|false,"evidence":"specific diff evidence or missing requirement"}]}`;
   const response = await ollamaGenerate(config, model, prompt, 10 * 60 * 1000, {
     jsonMode: true,
     telemetry: { agent: "local-reviewer", phase: "diff-review", taskId: task.id }
   });
   const review = extractJsonObject(response);
-  return { pass: review.pass === true, notes: String(review.notes || ""), risk: String(review.risk || "unknown") };
+  const checks = Array.isArray(review.checks) ? review.checks : [];
+  const completeChecklist = acceptance.every((_, index) => {
+    const check = checks.find((item) => item?.index === index);
+    return check?.pass === true && typeof check.evidence === "string" && check.evidence.trim().length > 0;
+  });
+  return {
+    pass: review.pass === true && completeChecklist,
+    notes: completeChecklist ? String(review.notes || "") : "Reviewer did not substantiate every acceptance criterion.",
+    risk: String(review.risk || "unknown"),
+    checks
+  };
 }
 
 async function commitTask(task, paths) {

@@ -34,10 +34,10 @@ The worker reads the JSON block below as the durable task queue. Keep tasks boun
     "id": "T003B",
     "title": "DuckDB-Wasm analytics worker",
     "dependsOn": ["T003"],
-    "objective": "Implement DuckDB-Wasm initialization and demo dataset schema inspection inside an analytics Web Worker using Vite-managed worker and Wasm asset URLs.",
+    "objective": "Repair the analytics protocol to include request correlation ids and structured clone-safe errors, then implement DuckDB-Wasm initialization and demo dataset schema inspection inside an analytics Web Worker using Vite-managed worker and Wasm asset URLs.",
     "focus": ["src/workers", "README.md"],
     "validation": ["npm run typecheck", "npm run lint", "npm run test", "npm run build"],
-    "acceptance": ["DuckDB runs off the main thread", "Worker and Wasm assets use Vite base-aware URLs", "Demo dataset loads and schema inspection returns clone-safe primitives", "Initialization and query failures return typed handled errors"]
+    "acceptance": ["Every request and response carries the same request id", "Errors are typed structured-clone-safe objects without any", "DuckDB runs off the main thread", "Worker and Wasm assets use Vite base-aware URLs", "Demo dataset loads and schema inspection returns clone-safe primitives", "Initialization and query failures return typed handled errors"]
   },
   {
     "id": "T003C",
