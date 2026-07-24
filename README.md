@@ -17,3 +17,11 @@ This is where my google apps scripts will live now!
   thread with Vite-managed Wasm and worker asset URLs
 - Analytics worker responses carry request ids and return only clone-safe schema
   primitives or typed handled errors
+
+## Analytics Client
+- Added a main-thread analytics client under `src/lib/analytics.ts`
+- The client correlates every worker response by `requestId`
+- The portfolio UI can load the demo dataset schema and render loading, success,
+  and handled error states
+- Tests mock the browser Worker API so request correlation and surfaced errors
+  are covered without loading Wasm in jsdom

@@ -94,6 +94,49 @@ button {
   background: #ffffff;
 }
 
+.analytics-panel {
+  display: grid;
+  gap: 20px;
+}
+
+.muted {
+  color: #64748b;
+}
+
+.loading {
+  color: #334155;
+  background: #e0f2fe;
+  border: 1px solid #7dd3fc;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.error-state {
+  color: #991b1b;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+}
+
+th,
+td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+}
+
+th {
+  background: #f1f5f9;
+}
+
 @media (max-width: 640px) {
   .nav-container,
   nav ul {
