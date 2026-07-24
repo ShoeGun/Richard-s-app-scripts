@@ -84,6 +84,7 @@ async function generate(model, prompt) {
       model,
       prompt,
       stream: false,
+      think: false,
       keep_alive: 0,
       format: "json",
       options: {

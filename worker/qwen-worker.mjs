@@ -294,6 +294,8 @@ async function ollamaGenerate(config, model, prompt, timeoutMs = 20 * 60 * 1000,
   delete options.telemetry;
   const jsonMode = options.jsonMode === true;
   delete options.jsonMode;
+  const think = options.think ?? false;
+  delete options.think;
   const onProgress = telemetry.onProgress;
   delete telemetry.onProgress;
   try {
@@ -304,6 +306,7 @@ async function ollamaGenerate(config, model, prompt, timeoutMs = 20 * 60 * 1000,
         model,
         prompt,
         stream: true,
+        think,
         ...(jsonMode ? { format: "json" } : {}),
         keep_alive: config.keepAlive || "2m",
         options: {
@@ -940,6 +943,7 @@ Return concise reviewer guidance only. Do not emit JSON edits. Focus on how the 
   const answer = await ollamaGenerate(config, channel.model, prompt, 20 * 60 * 1000, {
     num_ctx: channel.contextTokens || config.contextTokens || 16384,
     temperature: channel.temperature ?? 0.1,
+    think: channel.think === true,
     telemetry: { agent: channel.id, phase: "escalation", taskId: task.id }
   });
   await unloadModel(config, channel.model);

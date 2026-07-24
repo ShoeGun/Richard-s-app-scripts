@@ -19,9 +19,13 @@ The worker is intentionally simple:
 - Task-focus enforcement: application tasks cannot edit orchestration files or unrelated workflow/config paths.
 - Scoped commits: the worker never runs `git add -A`.
 
-Primary model: `qwen3:8b`.
+On-demand routing and compression utility: `qwen3.5:4b`.
 
-Repair and independent review model: `qwen2.5-coder:14b`.
+Primary implementation model: `qwen3.5:9b`.
+
+Repair and evidence-based review model: `qwen2.5-coder:14b`.
+
+Slow local supervisor: `qwen3.6:latest`.
 
 Initial context target: 16384 tokens.
 
@@ -45,11 +49,27 @@ The dashboard can pause/resume/stop the worker, trigger a Paperclip sync, edit t
 
 The evidence-based default route is:
 
-1. `qwen3:8b` performs the first bounded implementation attempt.
-2. `qwen2.5-coder:14b` performs repairs and independent diff review.
-3. After the local repair budget is exhausted, `qwen2.5-coder:14b` receives one compact read-only escalation packet.
-4. GPT 5.4 receives a sparse guidance-only packet if local recovery fails.
-5. GPT 5.6 is used only if the post-5.4 local retry still fails.
+1. Deterministic rules select ready tasks and retrieve context without spending
+   model tokens. `qwen3.5:4b` is available on demand for compression and schema
+   repair when deterministic handling is insufficient.
+2. `qwen3.5:9b` performs ordinary bounded implementation.
+3. `qwen2.5-coder:14b` performs repairs and evidence-based diff review.
+4. After the repair budget is exhausted, the 14B coder receives one compact
+   read-only recovery packet.
+5. `qwen3.6:latest` independently diagnoses stubborn failures as the final local
+   supervisor.
+6. GPT 5.4 receives a sparse guidance-only packet only after all local tiers fail.
+7. GPT 5.6 is used only if the post-5.4 local retry still fails.
+
+LiteLLM is not part of this worker's active request path. Models are addressed
+directly through Ollama so provider failures and token accounting remain explicit.
+LiteLLM may remain installed for separate experiments without appearing as a
+required service in this control plane.
+
+The dashboard monitors the Voice Platform gateway as `Voicebox`. A healthy
+gateway with unavailable TTS is displayed as degraded rather than offline.
+Voicebox does not participate in model routing and retains GPU priority when
+actively using the device.
 
 Other installed local models remain configurable experiments. A model is promoted only after the repository benchmark demonstrates valid structured output, focus compliance, and regression detection. "Uncensored" or "abliterated" is not a quality tier.
 

@@ -32,10 +32,18 @@ agents such as Night Operator; it does not duplicate the project-local worker.
    allowlisted validation commands.
 6. A different local model reviews the scoped diff.
 7. Passing work is committed with exact path staging. Failed work is restored.
-8. Repair uses the stronger local coder.
-9. Local escalation receives a compact failure packet.
-10. Frontier guidance is used only after local recovery fails.
-11. The bridge updates the parent Paperclip issue and the 16 child task issues.
+8. `qwen3.5:9b` handles ordinary implementation while
+   `qwen2.5-coder:14b` handles repair and evidence-based review.
+9. Local escalation receives a compact failure packet, first through the 14B
+   coder and then through the independent `qwen3.6:latest` supervisor.
+10. GPT 5.4 receives sparse guidance only after every local route fails; GPT 5.6
+    is the final model route.
+11. The bridge updates the parent Paperclip issue and all child task issues.
+
+`qwen3.5:4b` is reserved for inexpensive routing, compression, schema repair,
+and experiments. LiteLLM is not in the active project-worker request path.
+Voicebox is monitored as a runtime service but does not participate in model
+routing.
 
 ## Token Policy
 

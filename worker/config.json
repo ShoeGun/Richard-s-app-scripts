@@ -1,7 +1,7 @@
 {
   "ollamaUrl": "http://127.0.0.1:11434",
-  "primaryModel": "qwen3:8b",
-  "fallbackModel": "qwen2.5-coder:7b",
+  "primaryModel": "qwen3.5:9b",
+  "fallbackModel": "qwen2.5-coder:14b",
   "contextTokens": 16384,
   "maxOutputTokens": 4096,
   "temperature": 0.15,
@@ -12,7 +12,8 @@
   "maxRepairCycles": 3,
   "restoreFailedAttemptEdits": true,
   "routing": {
-    "implementerModel": "qwen3:8b",
+    "utilityModel": "qwen3.5:4b",
+    "implementerModel": "qwen3.5:9b",
     "repairModel": "qwen2.5-coder:14b",
     "reviewerModel": "qwen2.5-coder:14b"
   },
@@ -51,6 +52,7 @@
     "codexCommand": "C:\\Users\\Richard\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe",
     "ladder": [
       "qwen-coder-14b-local",
+      "qwen3.6-supervisor-local",
       "gpt-5.4",
       "gpt-5.6"
     ],
@@ -105,6 +107,37 @@
         "autoInvoke": true,
         "contextTokens": 16384,
         "temperature": 0.1
+      },
+      {
+        "id": "qwen3.5-fast-local",
+        "type": "ollama",
+        "model": "qwen3.5:4b",
+        "enabled": true,
+        "autoInvoke": false,
+        "contextTokens": 8192,
+        "temperature": 0.1,
+        "instructions": "Use for inexpensive routing, context compression, schema repair, and bounded experiments."
+      },
+      {
+        "id": "qwen3.5-default-local",
+        "type": "ollama",
+        "model": "qwen3.5:9b",
+        "enabled": true,
+        "autoInvoke": false,
+        "contextTokens": 16384,
+        "temperature": 0.1,
+        "instructions": "Default local implementation model. Repository validation remains authoritative."
+      },
+      {
+        "id": "qwen3.6-supervisor-local",
+        "type": "ollama",
+        "model": "qwen3.6:latest",
+        "enabled": true,
+        "autoInvoke": true,
+        "think": true,
+        "contextTokens": 16384,
+        "temperature": 0.1,
+        "instructions": "Slow independent local supervisor. Diagnose stubborn failures and return concise recovery guidance only."
       },
       {
         "id": "qwen3-32b-local",

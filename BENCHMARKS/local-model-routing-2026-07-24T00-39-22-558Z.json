@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "capturedAt": "2026-07-24T00:39:22.558Z",
+  "host": "RTX 3070 8GB / 64GB RAM",
+  "contextTokens": 8192,
+  "temperature": 0,
+  "results": [
+    {
+      "model": "qwen3.5:4b",
+      "cases": [
+        {
+          "id": "focused-proposal",
+          "text": "",
+          "durationMs": 7810,
+          "promptTokens": 137,
+          "completionTokens": 263,
+          "promptTokensPerSecond": 674.3486628699688,
+          "completionTokensPerSecond": 87.52039091997575,
+          "score": {
+            "points": 0,
+            "maxPoints": 3,
+            "details": {
+              "parseError": "Unexpected end of JSON input"
+            }
+          }
+        },
+        {
+          "id": "seeded-review",
+          "text": "",
+          "durationMs": 5583,
+          "promptTokens": 150,
+          "completionTokens": 42,
+          "promptTokensPerSecond": 806.0615831049492,
+          "completionTokensPerSecond": 82.16878642571649,
+          "score": {
+            "points": 0,
+            "maxPoints": 2,
+            "details": {
+              "parseError": "Unexpected end of JSON input"
+            }
+          }
+        }
+      ],
+      "points": 0,
+      "maxPoints": 5,
+      "errors": []
+    },
+    {
+      "model": "qwen3.5:9b",
+      "cases": [
+        {
+          "id": "focused-proposal",
+          "text": "",
+          "durationMs": 23990,
+          "promptTokens": 137,
+          "completionTokens": 492,
+          "promptTokensPerSecond": 443.94613021555693,
+          "completionTokensPerSecond": 30.47920559295901,
+          "score": {
+            "points": 0,
+            "maxPoints": 3,
+            "details": {
+              "parseError": "Unexpected end of JSON input"
+            }
+          }
+        },
+        {
+          "id": "seeded-review",
+          "text": "",
+          "durationMs": 8002,
+          "promptTokens": 150,
+          "completionTokens": 28,
+          "promptTokensPerSecond": 358.18500494295307,
+          "completionTokensPerSecond": 38.54402691474336,
+          "score": {
+            "points": 0,
+            "maxPoints": 2,
+            "details": {
+              "parseError": "Unexpected end of JSON input"
+            }
+          }
+        }
+      ],
+      "points": 0,
+      "maxPoints": 5,
+      "errors": []
+    }
+  ]
+}

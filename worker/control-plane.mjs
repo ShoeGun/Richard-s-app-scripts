@@ -76,6 +76,27 @@ async function health(url) {
   }
 }
 
+async function voiceboxHealth() {
+  const startedAt = Date.now();
+  try {
+    const response = await fetch("http://127.0.0.1:8765/health", { signal: AbortSignal.timeout(7000) });
+    const body = await response.json();
+    const tts = body.tts || {};
+    const ttsReady = response.ok && tts.status === "online";
+    return {
+      ok: ttsReady,
+      degraded: response.ok && !ttsReady,
+      status: response.status,
+      latencyMs: Date.now() - startedAt,
+      detail: ttsReady
+        ? `TTS online${tts.loaded ? " / loaded" : " / cold"}`
+        : `gateway online / TTS ${tts.status || "unknown"}`
+    };
+  } catch (error) {
+    return { ok: false, degraded: false, status: null, latencyMs: Date.now() - startedAt, error: error.message };
+  }
+}
+
 function publicRouting(config) {
   const channels = [
     ...(config.escalation?.localChannels || []),
@@ -131,7 +152,7 @@ async function collectStatus() {
       health("http://127.0.0.1:3100/api/health"),
       health("http://127.0.0.1:11434/api/version"),
       health("http://127.0.0.1:18789/health"),
-      health("http://127.0.0.1:4000/health/liveliness")
+      voiceboxHealth()
     ])
   ]);
 
@@ -173,7 +194,7 @@ async function collectStatus() {
       { name: "Paperclip", url: "http://127.0.0.1:3100", ...serviceHealth[0] },
       { name: "Ollama", url: "http://127.0.0.1:11434", ...serviceHealth[1] },
       { name: "OpenClaw", url: "http://127.0.0.1:18789", ...serviceHealth[2] },
-      { name: "LiteLLM", url: "http://127.0.0.1:4000", ...serviceHealth[3] }
+      { name: "Voicebox", url: "http://127.0.0.1:8765", ...serviceHealth[3] }
     ],
     git: { dirty: Boolean(gitStatus.trim()), status: gitStatus.slice(0, 12000) }
   };

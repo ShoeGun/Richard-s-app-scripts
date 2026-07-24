@@ -139,6 +139,7 @@ main { width: min(1480px, 100%); margin: 0 auto; padding: 0 clamp(16px, 3vw, 42p
 .service:last-child { border-bottom: 0; }
 .service i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
 .service.ok i { background: var(--green); }
+.service.degraded i { background: var(--yellow); }
 .service strong { font-size: 12px; }
 .service span { color: var(--muted); font-size: 10px; }
 

@@ -56,21 +56,33 @@ function renderHeader(snapshot) {
 function renderRouting(snapshot) {
   state.ladder = snapshot.routing.ladder.map((item) => ({ ...item }));
   state.availableChannels = snapshot.routing.availableChannels.map((item) => ({ ...item }));
-  $("#routing-flow").innerHTML = state.ladder.map((channel, index) => `
-    <div class="route-node ${channel.type === "codex" ? "frontier" : "local"}">
-      <span class="tier">${channel.type === "codex" ? "FRONTIER FALLBACK" : `LOCAL TIER ${index + 1}`}</span>
-      <strong>${escapeHtml(channel.model || channel.id)}</strong>
-      <span>${escapeHtml(channel.id)} · ${channel.autoInvoke ? "automatic" : "manual"}</span>
+  const roles = snapshot.routing.roles || {};
+  const roleNodes = [
+    { tier: "LOCAL UTILITY", model: roles.utilityModel, detail: "on-demand compression" },
+    { tier: "LOCAL IMPLEMENTER", model: roles.implementerModel, detail: "bounded edits" },
+    { tier: "LOCAL REPAIR + REVIEW", model: roles.repairModel, detail: "validation recovery" }
+  ].filter((item) => item.model);
+  const escalationNodes = state.ladder.map((channel, index) => ({
+    tier: channel.type === "codex" ? "FRONTIER FALLBACK" : `LOCAL ESCALATION ${index + 1}`,
+    model: channel.model || channel.id,
+    detail: `${channel.id} · ${channel.autoInvoke ? "automatic" : "manual"}`,
+    type: channel.type
+  }));
+  $("#routing-flow").innerHTML = [...roleNodes, ...escalationNodes].map((node) => `
+    <div class="route-node ${node.type === "codex" ? "frontier" : "local"}">
+      <span class="tier">${escapeHtml(node.tier)}</span>
+      <strong>${escapeHtml(node.model)}</strong>
+      <span>${escapeHtml(node.detail)}</span>
     </div>
   `).join("");
 }
 
 function renderServices(snapshot) {
   $("#service-list").innerHTML = snapshot.services.map((service) => `
-    <div class="service ${service.ok ? "ok" : ""}">
+    <div class="service ${service.ok ? "ok" : service.degraded ? "degraded" : ""}">
       <i></i>
       <strong>${escapeHtml(service.name)}</strong>
-      <span>${service.ok ? `${service.latencyMs} ms` : "offline"}</span>
+      <span>${escapeHtml(service.detail || (service.ok ? `${service.latencyMs} ms` : "offline"))}</span>
     </div>
   `).join("");
 }
