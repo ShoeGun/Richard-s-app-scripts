@@ -6,7 +6,20 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { commitPathsForProposal, resolveRepositoryPath, validateProposal } from "./lib/proposal.mjs";
-import { recordInference } from "./lib/telemetry.mjs";
+import {
+  assertFrontierBudget,
+  compactText,
+  nextChannelAfterFailure,
+  recordFailureFingerprint
+} from "./lib/escalation-policy.mjs";
+import { assertProviderQuota } from "./lib/provider-quota.mjs";
+import { resolvedSecret, secretsConfigured } from "./lib/secret-store.mjs";
+import { extractJsonObject } from "./lib/structured-output.mjs";
+import {
+  baselineValidationCommands,
+  recordWorkspaceBaselineFailure
+} from "./lib/task-isolation.mjs";
+import { readTelemetry, recordInference } from "./lib/telemetry.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -30,6 +43,29 @@ const RUNTIME_DIR = path.join(__dirname, "runtime");
 const argv = new Set(process.argv.slice(2));
 
 async function main() {
+  // Load central API keys from Projects/.env and paperclip/.env
+  const envPaths = [
+    path.join(os.homedir(), "Projects", ".env"),
+    path.join(os.homedir(), "ai-orchestration", "paperclip", ".env")
+  ];
+  for (const ep of envPaths) {
+    try {
+      const content = await fs.readFile(ep, "utf8");
+      for (const line of content.split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith("#")) {
+          const match = trimmed.match(/^([^=]+)=(.*)$/);
+          if (match) {
+            const key = match[1].trim();
+            let val = match[2].trim();
+            if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+            if (!process.env[key]) process.env[key] = val;
+          }
+        }
+      }
+    } catch {}
+  }
+
   await fs.mkdir(CONTROL_DIR, { recursive: true });
   await fs.mkdir(LOG_DIR, { recursive: true });
 
@@ -66,7 +102,7 @@ function defaultState(config = {}) {
     primaryModel: config.primaryModel || "qwen3:8b",
     fallbackModel: config.fallbackModel || "qwen2.5-coder:7b",
     contextTokens: config.contextTokens || 16384,
-    maxRepairCycles: config.maxRepairCycles || 3,
+    maxRepairCycles: config.maxRepairCycles || 2,
     lastHeartbeat: null,
     currentTaskId: null,
     workerPid: null,
@@ -80,6 +116,7 @@ async function loadState(config = {}) {
   const state = { ...defaultState(config), ...(await readJson(STATE_PATH, {})) };
   state.primaryModel = config.routing?.implementerModel || config.primaryModel || state.primaryModel;
   state.fallbackModel = config.routing?.repairModel || config.fallbackModel || state.fallbackModel;
+  state.maxRepairCycles = config.maxRepairCycles || 2;
   return state;
 }
 
@@ -240,6 +277,17 @@ async function gpuBusy(config) {
   const lower = smi.toLowerCase();
   for (const pattern of config.gpuDenyProcessPatterns || []) {
     if (lower.includes(String(pattern).toLowerCase())) {
+      if (String(pattern).toLowerCase() === "voicebox") {
+        try {
+          const response = await fetch("http://127.0.0.1:17493/health", {
+            signal: AbortSignal.timeout(3000)
+          });
+          const health = await response.json();
+          if (response.ok && health.model_loaded !== true) continue;
+        } catch {
+          // If health cannot prove the model is unloaded, preserve the GPU lock.
+        }
+      }
       return { busy: true, reason: `GPU process matched: ${pattern}` };
     }
   }
@@ -254,16 +302,17 @@ function execText(command, args = [], timeoutMs = 30000) {
         error.stderr = stderr;
         reject(error);
       } else {
-        resolve(`${stdout}${stderr}`);
+        resolve(stdout);
       }
     });
   });
 }
 
-function execWithInput(command, args = [], input = "", timeoutMs = 30000) {
+function execWithInput(command, args = [], input = "", timeoutMs = 30000, options = {}) {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
-      cwd: ROOT,
+      cwd: options.cwd || ROOT,
+      env: options.env || process.env,
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"]
     });
@@ -283,6 +332,16 @@ function execWithInput(command, args = [], input = "", timeoutMs = 30000) {
     });
     child.stdin.end(input);
   });
+}
+
+function expandPathTemplate(value) {
+  return String(value || "")
+    .replace(/%TEMP%/gi, os.tmpdir())
+    .replace(/%USERPROFILE%/gi, os.homedir());
+}
+
+function quotePosixShell(value) {
+  return `'${String(value).replaceAll("'", `'\\''`)}'`;
 }
 
 async function ollamaGenerate(config, model, prompt, timeoutMs = 20 * 60 * 1000, extraOptions = {}) {
@@ -362,6 +421,11 @@ async function ollamaGenerate(config, model, prompt, timeoutMs = 20 * 60 * 1000,
         inputChars: prompt.length,
         outputChars: responseText.length,
         exact: Number.isFinite(finalData.prompt_eval_count) && Number.isFinite(finalData.eval_count)
+      },
+      performance: {
+        promptEvalDurationNs: finalData.prompt_eval_duration,
+        evalDurationNs: finalData.eval_duration,
+        loadDurationNs: finalData.load_duration
       }
     });
     return responseText;
@@ -392,16 +456,6 @@ async function unloadModel(config, model) {
   } catch {
     // Best effort only.
   }
-}
-
-function extractJsonObject(text) {
-  const cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-  const fenced = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fenced ? fenced[1] : cleaned;
-  const start = candidate.indexOf("{");
-  const end = candidate.lastIndexOf("}");
-  if (start < 0 || end < start) throw new Error("Model response did not contain a JSON object.");
-  return JSON.parse(candidate.slice(start, end + 1));
 }
 
 function assertAllowedCommand(command, config) {
@@ -517,13 +571,13 @@ Task:
 ${JSON.stringify(task, null, 2)}
 
 Operator plan:
-${operatorContext.activePlan || "(none provided)"}
+${compactText(operatorContext.activePlan || "(none provided)", 2500, "operator plan")}
 
 Test patterns:
-${operatorContext.testPatterns || "(none provided)"}
+${compactText(operatorContext.testPatterns || "(none provided)", 1600, "test patterns")}
 
 Guardrails:
-${operatorContext.guardrails || "(none provided)"}
+${compactText(operatorContext.guardrails || "(none provided)", 1600, "guardrails")}
 
 Diff stat:
 ${diffSummary.stat}
@@ -606,6 +660,34 @@ function allEscalationChannels(config) {
   return [...channels.values()];
 }
 
+function channelCredentialNames(channel) {
+  return [
+    ...(Array.isArray(channel.apiKeyEnvs) ? channel.apiKeyEnvs : []),
+    channel.apiKeyEnv
+  ].filter(Boolean);
+}
+
+function channelCredentialsConfigured(channel) {
+  const names = channelCredentialNames(channel);
+  return secretsConfigured(names);
+}
+
+function channelApiKey(channel) {
+  const name = channelCredentialNames(channel).find((candidate) => {
+    try {
+      return Boolean(resolvedSecret(candidate));
+    } catch {
+      return Boolean(process.env[candidate]);
+    }
+  });
+  if (!name) return null;
+  try {
+    return resolvedSecret(name);
+  } catch {
+    return process.env[name] || null;
+  }
+}
+
 function channelMatches(channel, channelId) {
   if (!channel || !channelId) return false;
   const normalized = normalizeLegacyChannelId(channelId);
@@ -626,7 +708,12 @@ function escalationLadder(config) {
   const ladder = [];
   for (const id of configuredIds) {
     const channel = channels.find((item) => item.id === id) || channels.find((item) => channelMatches(item, id));
-    if (channel && channel.enabled !== false && !ladder.some((item) => item.id === channel.id)) {
+    if (
+      channel
+      && channel.enabled !== false
+      && channelCredentialsConfigured(channel)
+      && !ladder.some((item) => item.id === channel.id)
+    ) {
       ladder.push(channel);
     }
   }
@@ -665,6 +752,39 @@ function appendEscalationHistory(taskState, event) {
   taskState.escalationHistory = Array.isArray(taskState.escalationHistory) ? taskState.escalationHistory : [];
   taskState.escalationHistory.push({ at: new Date().toISOString(), ...event });
   taskState.escalationHistory = taskState.escalationHistory.slice(-12);
+}
+
+function advanceAfterEscalationFailure(task, state, taskState, config, failedChannel, error) {
+  const ladder = escalationLadder(config);
+  const failedIndex = findEscalationIndex(ladder, failedChannel.id);
+  const failedPosition = failedIndex >= 0 ? failedIndex : Number(taskState.escalationLadderIndex || 0);
+  const selected = nextChannelAfterFailure(ladder, failedPosition, error?.message || error);
+  const nextIndex = selected.index;
+  const next = selected.channel;
+  if (!next) {
+    taskState.status = "blocked";
+    taskState.blockedAt = new Date().toISOString();
+    taskState.escalationAutoInvoke = false;
+    state.status = "blocked";
+    state.lastError = `Escalation ladder exhausted for ${task.id} after ${failedChannel.id} failed.`;
+    appendEscalationHistory(taskState, { event: "ladder-exhausted", afterChannelId: failedChannel.id });
+    return null;
+  }
+
+  taskState.escalationChannel = next.id;
+  taskState.escalationLadderIndex = nextIndex;
+  taskState.escalationAutoInvoke = next.autoInvoke === true;
+  taskState.escalationRequestedAt = new Date().toISOString();
+  state.status = "awaiting_escalation";
+  state.lastError = `Escalation ${failedChannel.id} failed for ${task.id}; advanced to ${next.id}.`;
+  appendEscalationHistory(taskState, {
+    event: "advanced-after-failure",
+    failedChannelId: failedChannel.id,
+    nextChannelId: next.id,
+    providerWide: selected.providerWide,
+    error: String(error?.message || error).slice(0, 1000)
+  });
+  return next;
 }
 
 function parseAnswerChannelId(answer) {
@@ -781,8 +901,7 @@ async function autoInvokeAwaitingEscalations(tasks, state, config) {
     } catch (error) {
       taskState.escalationAutoInvokeError = String(error.stack || error.message || error).slice(0, 4000);
       appendEscalationHistory(taskState, { event: "auto-invoke-failed", channelId: channel.id, error: taskState.escalationAutoInvokeError });
-      state.status = "awaiting_escalation";
-      state.lastError = `Auto escalation failed for ${task.id} via ${channel.id}; awaiting manual answer.`;
+      advanceAfterEscalationFailure(task, state, taskState, config, channel, error);
       await log(`Auto escalation failed for ${task.id}`, { channel: channel.id, error: taskState.escalationAutoInvokeError });
     }
   }
@@ -845,6 +964,10 @@ async function createEscalationRequest(task, state, taskState, config, channel, 
   const latestPath = path.join(ESCALATION_OUTBOX, `${task.id}.md`);
   const archivePath = path.join(ESCALATION_OUTBOX, `${safeStamp}-${task.id}.md`);
   const targetChannel = channel || config.escalation?.manualFrontierChannel || { id: "manual", label: "Manual escalation" };
+  const budget = config.escalation?.frontierBudget || {};
+  const packetLimit = targetChannel.type === "codex"
+    ? (targetChannel.maxPromptChars || budget.maxPromptChars || 14000)
+    : (targetChannel.maxPromptChars || 30000);
   const ladderText = ladder.length ? ladder.map((item) => item.id).join(" -> ") : targetChannel.id;
   const historyText = Array.isArray(taskState.escalationHistory) && taskState.escalationHistory.length
     ? JSON.stringify(taskState.escalationHistory.slice(-6), null, 2)
@@ -886,25 +1009,25 @@ ${JSON.stringify(task, null, 2)}
 ## Operator Plan
 
 \`\`\`markdown
-${operatorContext.activePlan || "(none provided)"}
+${compactText(operatorContext.activePlan || "(none provided)", Math.min(2500, Math.floor(packetLimit * 0.16)), "operator plan")}
 \`\`\`
 
 ## Test Patterns
 
 \`\`\`markdown
-${operatorContext.testPatterns || "(none provided)"}
+${compactText(operatorContext.testPatterns || "(none provided)", Math.min(1600, Math.floor(packetLimit * 0.1)), "test patterns")}
 \`\`\`
 
 ## Guardrails
 
 \`\`\`markdown
-${operatorContext.guardrails || "(none provided)"}
+${compactText(operatorContext.guardrails || "(none provided)", Math.min(1600, Math.floor(packetLimit * 0.1)), "guardrails")}
 \`\`\`
 
 ## Last Local Failure
 
 \`\`\`text
-${String(taskState.lastError || "").slice(0, 8000)}
+${compactText(taskState.lastError || "", Math.min(4000, Math.floor(packetLimit * 0.25)), "last failure")}
 \`\`\`
 
 ## Escalation History
@@ -916,13 +1039,13 @@ ${historyText}
 ## Git Status
 
 \`\`\`text
-${diffSummary.status.slice(0, 12000)}
+${compactText(diffSummary.status, Math.min(5000, Math.floor(packetLimit * 0.28)), "git status")}
 \`\`\`
 
 ## Diff Stat
 
 \`\`\`text
-${diffSummary.stat.slice(0, 8000)}
+${compactText(diffSummary.stat, Math.min(3000, Math.floor(packetLimit * 0.18)), "diff stat")}
 \`\`\`
 
 ## Important Constraint
@@ -954,7 +1077,8 @@ Return concise reviewer guidance only. Do not emit JSON edits. Focus on how the 
 }
 
 async function invokeCodexEscalation(config, task, channel, requestPath) {
-  const request = await fs.readFile(requestPath, "utf8");
+  const budget = config.escalation?.frontierBudget || {};
+  const request = compactText(await fs.readFile(requestPath, "utf8"), channel.maxPromptChars || budget.maxPromptChars || 14000, "frontier request");
   const codexCommand = channel.command || config.escalation?.codexCommand || process.env.CODEX_CLI_PATH || "codex";
   const timeoutMs = (channel.timeoutSeconds || 1800) * 1000;
   const codexWorkDir = channel.workDir || config.escalation?.codexWorkDir || path.join(os.tmpdir(), "edgeops-codex-escalations");
@@ -972,6 +1096,8 @@ Rules:
 - Keep the answer under ${channel.maxAnswerWords || 900} words.
 - Do not include secrets, tokens, raw logs, or unrelated repository content.
 `;
+  const telemetry = await readTelemetry(RUNTIME_DIR, 500);
+  assertFrontierBudget({ channel, promptChars: prompt.length, taskId: task.id, telemetry, config });
   const args = [
     "exec",
     "-m", channel.model,
@@ -1006,9 +1132,282 @@ Rules:
   return { answer, answerPath: outputPath };
 }
 
+async function invokeAntigravityEscalation(config, task, channel, requestPath) {
+  const request = compactText(await fs.readFile(requestPath, "utf8"), channel.maxPromptChars || 18000, "antigravity request");
+  const command = channel.command || config.escalation?.antigravityCommand || process.env.AGY_CLI_PATH || "agy";
+  const timeoutMs = (channel.timeoutSeconds || 600) * 1000;
+  const workDir = expandPathTemplate(channel.workDir || path.join(os.tmpdir(), "edgeops-antigravity-escalations"));
+  await fs.mkdir(workDir, { recursive: true });
+  await fs.mkdir(ESCALATION_FRONTIER, { recursive: true });
+  const outputPath = path.join(ESCALATION_FRONTIER, `${new Date().toISOString().replace(/[:.]/g, "-")}-${task.id}-${channel.id}.md`);
+  const prompt = `${request}
+
+You are an Antigravity external advisory harness for a local-first autonomous software loop.
+
+Rules:
+- Produce final guidance only. Do not directly edit files.
+- Use the request packet as the source of truth; do not browse or inspect unrelated files.
+- Keep the answer under ${channel.maxAnswerWords || 900} words.
+- Prefer concrete recovery steps, exact files to inspect, and validation commands.
+- Do not include secrets, tokens, raw logs, or unrelated repository content.
+`;
+  const args = [
+    "--print", prompt,
+    "--print-timeout", channel.printTimeout || `${Math.max(1, Math.ceil(timeoutMs / 60000))}m`,
+    "--mode", channel.mode || "plan",
+    "--model", channel.model || "gpt-oss-120b-medium"
+  ];
+  if (channel.sandbox !== false) args.push("--sandbox");
+  if (channel.dangerouslySkipPermissions === true) args.push("--dangerously-skip-permissions");
+
+  const startedAt = Date.now();
+  const result = await execWithInput(command, args, "", timeoutMs, { cwd: workDir });
+  if (result.code !== 0) {
+    throw new Error(`Antigravity escalation ${channel.id} failed with exit ${result.code}: ${result.stderr || result.stdout}`);
+  }
+  const answer = result.stdout.trim();
+  if (!answer) throw new Error(`Antigravity escalation ${channel.id} produced an empty answer.`);
+  await fs.writeFile(outputPath, answer, "utf8");
+  await recordInference(RUNTIME_DIR, {
+    provider: "antigravity",
+    model: channel.model,
+    agent: channel.id,
+    phase: "escalation",
+    taskId: task.id,
+    durationMs: Date.now() - startedAt,
+    status: "ok",
+    usage: { inputChars: prompt.length, outputChars: answer.length, exact: false }
+  });
+  return { answer, answerPath: outputPath };
+}
+
+async function invokeOpenAICompatibleEscalation(config, task, channel, requestPath) {
+  const apiKey = channelApiKey(channel);
+  if (!apiKey) {
+    throw new Error(
+      `${channel.id} is not configured. Set one of: ${channelCredentialNames(channel).join(", ")}.`
+    );
+  }
+  const request = compactText(
+    await fs.readFile(requestPath, "utf8"),
+    channel.maxPromptChars || 18000,
+    `${channel.label || channel.id} request`
+  );
+  const prompt = `${request}
+
+You are a free-tier advisory model in a local-first autonomous software loop.
+
+Rules:
+- Return concise recovery guidance only. Do not edit files directly.
+- Use the request packet as the source of truth.
+- Give concrete file-level next steps and validation commands.
+- Keep the answer under ${channel.maxAnswerWords || 900} words.
+- Do not include secrets, raw logs, or unrelated repository content.
+`;
+  const inputTokens = Math.ceil(prompt.length / 4);
+  const telemetry = await readTelemetry(RUNTIME_DIR, 20000);
+  assertProviderQuota({ events: telemetry.events, channel, inputTokens });
+
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+    ...(channel.headers || {})
+  };
+  const body = {
+    model: channel.model,
+    messages: [
+      {
+        role: "system",
+        content: channel.instructions || "Provide concise software-engineering recovery guidance."
+      },
+      { role: "user", content: prompt }
+    ],
+    stream: false,
+    temperature: channel.temperature ?? 0.1,
+    max_tokens: channel.maxOutputTokens || 1200,
+    ...(channel.requestOptions || {})
+  };
+  const startedAt = Date.now();
+  let response;
+  let data;
+  let recorded = false;
+  try {
+    response = await fetch(channel.endpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout((channel.timeoutSeconds || 600) * 1000)
+    });
+    data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(
+        `${channel.id} returned HTTP ${response.status}: ${String(data?.error?.message || data?.message || "request failed").slice(0, 1000)}`
+      );
+    }
+    const answer = data?.choices?.[0]?.message?.content?.trim();
+    if (!answer) throw new Error(`${channel.id} produced an empty answer.`);
+    const usage = data.usage || {};
+    await recordInference(RUNTIME_DIR, {
+      provider: channel.telemetryProvider,
+      model: data.model || channel.telemetryModel || channel.model,
+      agent: channel.id,
+      phase: "escalation",
+      taskId: task.id,
+      durationMs: Date.now() - startedAt,
+      status: "ok",
+      usage: {
+        promptTokens: usage.prompt_tokens ?? usage.input_tokens,
+        completionTokens: usage.completion_tokens ?? usage.output_tokens,
+        inputChars: prompt.length,
+        outputChars: answer.length,
+        exact: Number.isFinite(usage.prompt_tokens ?? usage.input_tokens)
+          && Number.isFinite(usage.completion_tokens ?? usage.output_tokens)
+      }
+    });
+    recorded = true;
+    await fs.mkdir(ESCALATION_FRONTIER, { recursive: true });
+    const outputPath = path.join(
+      ESCALATION_FRONTIER,
+      `${new Date().toISOString().replace(/[:.]/g, "-")}-${task.id}-${channel.id}.md`
+    );
+    await fs.writeFile(outputPath, answer, "utf8");
+    return { answer, answerPath: outputPath };
+  } catch (error) {
+    if (!recorded) {
+      await recordInference(RUNTIME_DIR, {
+        provider: channel.telemetryProvider,
+        model: data?.model || channel.telemetryModel || channel.model,
+        agent: channel.id,
+        phase: "escalation",
+        taskId: task.id,
+        durationMs: Date.now() - startedAt,
+        status: "error",
+        usage: { inputChars: prompt.length, outputChars: 0, exact: false }
+      });
+    }
+    throw error;
+  }
+}
+
+async function invokeCopilotEscalation(config, task, channel, requestPath) {
+  const request = compactText(
+    await fs.readFile(requestPath, "utf8"),
+    channel.maxPromptChars || 14000,
+    "Copilot request"
+  );
+  const prompt = `${request}
+
+Act as a concise recovery adviser. Do not edit files or run tools. Return diagnosis, exact
+next steps, validation commands, and red flags in under ${channel.maxAnswerWords || 700} words.`;
+  const command = channel.command || "copilot";
+  const args = ["-p", prompt, "-s"];
+  if (channel.model && channel.model !== "auto") args.push("--model", channel.model);
+  const workDir = expandPathTemplate(channel.workDir || path.join(os.tmpdir(), "edgeops-copilot-escalations"));
+  await fs.mkdir(workDir, { recursive: true });
+  const startedAt = Date.now();
+  const copilotToken = channelApiKey(channel);
+  const result = await execWithInput(command, args, "", (channel.timeoutSeconds || 900) * 1000, {
+    cwd: workDir,
+    env: copilotToken
+      ? { ...process.env, COPILOT_GITHUB_TOKEN: copilotToken }
+      : process.env
+  });
+  if (result.code !== 0) {
+    throw new Error(`Copilot escalation ${channel.id} failed with exit ${result.code}: ${result.stderr || result.stdout}`);
+  }
+  const answer = result.stdout.trim();
+  if (!answer) throw new Error(`Copilot escalation ${channel.id} produced an empty answer.`);
+  await recordInference(RUNTIME_DIR, {
+    provider: "github-copilot",
+    model: channel.telemetryModel || channel.model || "auto",
+    agent: channel.id,
+    phase: "escalation",
+    taskId: task.id,
+    durationMs: Date.now() - startedAt,
+    status: "ok",
+    usage: { inputChars: prompt.length, outputChars: answer.length, exact: false }
+  });
+  await fs.mkdir(ESCALATION_FRONTIER, { recursive: true });
+  const outputPath = path.join(
+    ESCALATION_FRONTIER,
+    `${new Date().toISOString().replace(/[:.]/g, "-")}-${task.id}-${channel.id}.md`
+  );
+  await fs.writeFile(outputPath, answer, "utf8");
+  return { answer, answerPath: outputPath };
+}
+
+async function invokeHermesEscalation(config, task, channel, requestPath) {
+  const request = compactText(await fs.readFile(requestPath, "utf8"), channel.maxPromptChars || 18000, "Hermes request");
+  const prompt = `${request}
+
+You are the Hermes Agent recovery harness for a local-first autonomous software loop.
+
+Rules:
+- Use your available tools and skills when they materially improve diagnosis or recovery.
+- Keep all actions scoped to the task and preserve useful evidence for the Windows worker.
+- You may inspect systems, run bounded checks, and prepare concrete fixes. Do not push,
+  publish, expose secrets, or perform destructive system changes.
+- Treat the request packet as the authoritative task handoff; verify assumptions with tools
+  when access is available.
+- Return a concise handoff describing work performed and the next Windows-worker action.
+- Keep the answer under ${channel.maxAnswerWords || 900} words.
+- Include diagnosis, exact file-level changes or next steps, validation results, and red flags.
+- Do not include secrets, raw logs, or unrelated context.
+`;
+  const command = channel.command || "ssh";
+  const remoteArgs = [
+    channel.hermesCommand || "/Users/rich/.local/bin/hermes",
+    "chat",
+    "-q", prompt,
+    "-Q",
+    "-m", channel.model,
+    "--provider", channel.provider || "local-ollama",
+    "--max-turns", String(channel.maxTurns || 1),
+    "--source", "tool"
+  ];
+  if (channel.ignoreRules !== false) remoteArgs.push("--ignore-rules");
+  const remoteCommand = remoteArgs.map(quotePosixShell).join(" ");
+  const args = [
+    "-o", "BatchMode=yes",
+    "-o", "ConnectTimeout=8",
+    channel.sshHost || "openclaw-mac",
+    remoteCommand
+  ];
+
+  const startedAt = Date.now();
+  const result = await execWithInput(command, args, "", (channel.timeoutSeconds || 900) * 1000);
+  if (result.code !== 0) {
+    throw new Error(`Hermes escalation ${channel.id} failed with exit ${result.code}: ${result.stderr || result.stdout}`);
+  }
+  const ansiSequence = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
+  const answer = result.stdout
+    .replace(ansiSequence, "")
+    .replace(/^\s*session_id:\s*\S+\s*$/gim, "")
+    .trim();
+  if (!answer) throw new Error(`Hermes escalation ${channel.id} produced an empty answer.`);
+  await fs.mkdir(ESCALATION_LOCAL, { recursive: true });
+  const outputPath = path.join(ESCALATION_LOCAL, `${new Date().toISOString().replace(/[:.]/g, "-")}-${task.id}-${channel.id}.md`);
+  await fs.writeFile(outputPath, answer, "utf8");
+  await recordInference(RUNTIME_DIR, {
+    provider: channel.telemetryProvider || "hermes",
+    model: channel.telemetryModel || `hermes/${channel.model}`,
+    agent: channel.id,
+    phase: "escalation",
+    taskId: task.id,
+    durationMs: Date.now() - startedAt,
+    status: "ok",
+    usage: { inputChars: prompt.length, outputChars: answer.length, exact: false }
+  });
+  return { answer, answerPath: outputPath };
+}
+
 async function invokeEscalationChannel(config, task, channel, requestPath) {
   if (channel.type === "ollama") return invokeOllamaEscalation(config, task, channel, requestPath);
+  if (channel.type === "hermes") return invokeHermesEscalation(config, task, channel, requestPath);
   if (channel.type === "codex") return invokeCodexEscalation(config, task, channel, requestPath);
+  if (channel.type === "antigravity") return invokeAntigravityEscalation(config, task, channel, requestPath);
+  if (channel.type === "openai-compatible") return invokeOpenAICompatibleEscalation(config, task, channel, requestPath);
+  if (channel.type === "copilot-cli") return invokeCopilotEscalation(config, task, channel, requestPath);
   return null;
 }
 
@@ -1054,6 +1453,7 @@ async function requestEscalation(task, state, taskState, config, reason) {
     } catch (error) {
       taskState.escalationAutoInvokeError = String(error.stack || error.message || error).slice(0, 4000);
       appendEscalationHistory(taskState, { event: "auto-invoke-failed", channelId: channel.id, error: taskState.escalationAutoInvokeError });
+      advanceAfterEscalationFailure(task, state, taskState, config, channel, error);
       await log(`Auto escalation failed for ${task.id}`, { channel: channel.id, error: taskState.escalationAutoInvokeError });
     }
   }
@@ -1191,17 +1591,22 @@ async function processTask(task, config, state) {
     taskState.status = "pending";
     taskState.repairCycles = (taskState.repairCycles || 0) + 1;
     taskState.lastError = String(error.stack || error.message || error).slice(0, 8000);
+    const fingerprint = recordFailureFingerprint(taskState, taskState.lastError);
     state.lastError = taskState.lastError;
     state.currentTaskId = null;
     state.workerPid = process.pid;
     delete taskState.lease;
 
-    if (taskState.repairCycles >= (state.maxRepairCycles || 3)) {
+    const repeatedFailureLimit = config.escalation?.maxRepeatedFailureFingerprint || 2;
+    const repeatedFailure = repeatedFailureLimit > 0 && fingerprint.count >= repeatedFailureLimit;
+    const exhaustedRepairCycles = taskState.repairCycles >= (state.maxRepairCycles || 2);
+
+    if (repeatedFailure || exhaustedRepairCycles) {
       if (config.escalation?.enabled) {
         if (taskState.escalationAnswerChannel) {
           appendEscalationHistory(taskState, { event: "post-answer-failed", channelId: taskState.escalationAnswerChannel, error: taskState.lastError });
         }
-        const result = await requestEscalation(task, state, taskState, config, "max-repair-cycles");
+        const result = await requestEscalation(task, state, taskState, config, repeatedFailure ? "repeated-failure-fingerprint" : "max-repair-cycles");
         await log(`Task ${task.id} escalation result`, { status: result.status, channel: result.channel?.id, request: result.request?.latestPath, error: taskState.lastError });
       } else {
         taskState.status = "blocked";
@@ -1210,12 +1615,12 @@ async function processTask(task, config, state) {
         await log(`Blocked task ${task.id}`, { error: taskState.lastError });
       }
     } else {
-      await log(`Task ${task.id} needs repair`, { repairCycles: taskState.repairCycles, error: taskState.lastError });
+      await log(`Task ${task.id} needs repair`, { repairCycles: taskState.repairCycles, failureFingerprint: fingerprint.fingerprint, fingerprintCount: fingerprint.count, error: taskState.lastError });
     }
 
     state.status = taskState.status === "blocked" || taskState.status === "awaiting_escalation"
       ? taskState.status
-      : (taskState.escalationAnswerChannel ? "idle" : "repair_wait");
+      : "repair_wait";
     await saveState(state);
   } finally {
     await unloadModel(config, model);
@@ -1284,7 +1689,6 @@ async function runOnce() {
   }
   if (autoInvokedEscalations) {
     console.log("Escalation answer captured. The next loop iteration will resume local work.");
-    return;
   }
 
   if (allTerminal(tasks, state)) {
@@ -1307,6 +1711,21 @@ async function runOnce() {
     await saveState(state);
     console.log(state.lastError);
     return;
+  }
+
+  const baselineCommands = baselineValidationCommands(task, config);
+  if (baselineCommands.length) {
+    const baseline = await runValidation(baselineCommands, config);
+    if (!baseline.ok) {
+      recordWorkspaceBaselineFailure(state, task, baseline.results.at(-1) || {});
+      await saveState(state);
+      await log(`Workspace baseline failed before ${task.id}; inference skipped`, {
+        command: baseline.results.at(-1)?.command,
+        code: baseline.results.at(-1)?.code
+      });
+      console.log(state.lastError);
+      return;
+    }
   }
 
   await processTask(task, config, state);
