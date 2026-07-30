@@ -81,6 +81,103 @@ function validateContent(filePath, content) {
   }
 }
 
+function countOccurrences(content, search) {
+  let count = 0;
+  let offset = 0;
+  while (offset <= content.length - search.length) {
+    const index = content.indexOf(search, offset);
+    if (index === -1) break;
+    count += 1;
+    offset = index + search.length;
+  }
+  return count;
+}
+
+function normalizeReplacementLineEndings(value, content) {
+  const lineEnding = content.includes("\r\n") ? "\r\n" : "\n";
+  return value.replace(/\r\n|\r|\n/g, lineEnding);
+}
+
+async function resolveEditContent(safe, edit, limits) {
+  const hasContent = Object.prototype.hasOwnProperty.call(edit, "content");
+  const hasReplacements = Array.isArray(edit.replacements) && edit.replacements.length > 0;
+
+  if (hasReplacements) {
+    if (!existsSync(safe.absolute)) {
+      throw new Error(`Edit for ${safe.normalized} requires full content because the file does not exist.`);
+    }
+    if (!Array.isArray(edit.replacements) || edit.replacements.length === 0) {
+      throw new Error(`Edit for ${safe.normalized} must contain at least one replacement.`);
+    }
+    const maxReplacements = limits.maxReplacementsPerFile || 24;
+    if (edit.replacements.length > maxReplacements) {
+      throw new Error(`Edit for ${safe.normalized} exceeds ${maxReplacements} replacements.`);
+    }
+
+    let content = await fs.readFile(safe.absolute, "utf8");
+    for (const [index, replacement] of edit.replacements.entries()) {
+      if (typeof replacement?.find !== "string" || !replacement.find) {
+        throw new Error(`Replacement ${index + 1} for ${safe.normalized} needs non-empty find text.`);
+      }
+      if (typeof replacement.replace !== "string") {
+        throw new Error(`Replacement ${index + 1} for ${safe.normalized} needs string replace text.`);
+      }
+      const find = normalizeReplacementLineEndings(replacement.find, content);
+      const replace = normalizeReplacementLineEndings(replacement.replace, content);
+      const matches = countOccurrences(content, find);
+      if (matches !== 1) {
+        throw new Error(
+          `Replacement ${index + 1} for ${safe.normalized} expected exactly once but found ${matches}.`
+        );
+      }
+      content = content.replace(find, replace);
+    }
+    return { content, mode: "replace" };
+  }
+
+  if (!hasContent) {
+    throw new Error(`Edit for ${safe.normalized} must provide content or non-empty replacements.`);
+  }
+  let content = edit.content;
+  if (safe.normalized.toLowerCase().endsWith(".json")
+    && content !== null
+    && typeof content === "object"
+    && !Array.isArray(content)) {
+    content = `${JSON.stringify(content, null, 2)}\n`;
+  }
+  if (typeof content !== "string") {
+    throw new Error(`Edit for ${safe.normalized} is missing string content.`);
+  }
+  return { content, mode: "full" };
+}
+
+function coalesceCompactEdits(edits) {
+  const result = [];
+  const replacementsByPath = new Map();
+  for (const edit of edits) {
+    const hasReplacements = Array.isArray(edit?.replacements) && edit.replacements.length > 0;
+    const key = typeof edit?.path === "string"
+      ? normalizeSlashes(edit.path.trim()).toLowerCase()
+      : null;
+    const existing = hasReplacements && key ? replacementsByPath.get(key) : null;
+    if (existing) {
+      existing.replacements.push(...edit.replacements);
+      continue;
+    }
+    const copy = hasReplacements
+      ? { ...edit, replacements: [...edit.replacements] }
+      : edit;
+    result.push(copy);
+    if (hasReplacements && key) replacementsByPath.set(key, copy);
+  }
+  return result;
+}
+
+function isActionableEdit(edit) {
+  return Object.prototype.hasOwnProperty.call(edit || {}, "content")
+    || (Array.isArray(edit?.replacements) && edit.replacements.length > 0);
+}
+
 export async function validateProposal({ root, task, action, config = {} }) {
   if (!action || typeof action !== "object" || Array.isArray(action)) {
     throw new Error("Model response must be a JSON object.");
@@ -93,8 +190,15 @@ export async function validateProposal({ root, task, action, config = {} }) {
   const maxFiles = limits.maxFilesPerTask || 12;
   const maxFileChars = limits.maxCharsPerFile || 120000;
   const maxTotalChars = limits.maxTotalEditChars || 400000;
-  if (action.edits.length > maxFiles) {
-    throw new Error(`Proposal edits ${action.edits.length} files; limit is ${maxFiles}.`);
+  if (action.edits.length > maxFiles * 4) {
+    throw new Error(`Proposal contains too many edit entries; limit is ${maxFiles * 4}.`);
+  }
+  const proposalEdits = coalesceCompactEdits(action.edits).filter(isActionableEdit);
+  if (proposalEdits.length === 0) {
+    throw new Error("A task proposal must contain at least one actionable file edit.");
+  }
+  if (proposalEdits.length > maxFiles) {
+    throw new Error(`Proposal edits ${proposalEdits.length} files; limit is ${maxFiles}.`);
   }
 
   const protectedPrefixes = config.protectedPathPrefixes || DEFAULT_PROTECTED_PREFIXES;
@@ -105,7 +209,7 @@ export async function validateProposal({ root, task, action, config = {} }) {
   let totalChars = 0;
   const edits = [];
 
-  for (const edit of action.edits) {
+  for (const edit of proposalEdits) {
     const safe = resolveRepositoryPath(root, edit?.path);
     const lowered = safe.normalized.toLowerCase();
     if (protectedFiles.has(safe.normalized) || protectedPrefixes.some((prefix) => lowered.startsWith(prefix.toLowerCase()))) {
@@ -118,16 +222,8 @@ export async function validateProposal({ root, task, action, config = {} }) {
     if (seen.has(lowered)) throw new Error(`Duplicate edit path: ${safe.normalized}`);
     seen.add(lowered);
 
-    let content = edit.content;
-    if (safe.normalized.toLowerCase().endsWith(".json")
-      && content !== null
-      && typeof content === "object"
-      && !Array.isArray(content)) {
-      content = `${JSON.stringify(content, null, 2)}\n`;
-    }
-    if (typeof content !== "string") {
-      throw new Error(`Edit for ${safe.normalized} is missing string content.`);
-    }
+    const resolved = await resolveEditContent(safe, edit, limits);
+    const { content } = resolved;
     if (content.length > maxFileChars) {
       throw new Error(`Edit for ${safe.normalized} exceeds ${maxFileChars} characters.`);
     }
@@ -141,7 +237,7 @@ export async function validateProposal({ root, task, action, config = {} }) {
       const stat = await fs.stat(safe.absolute);
       if (!stat.isFile()) throw new Error(`Edit path is an existing directory: ${safe.normalized}`);
     }
-    edits.push({ path: safe.normalized, absolute: safe.absolute, content });
+    edits.push({ path: safe.normalized, absolute: safe.absolute, content, mode: resolved.mode });
   }
 
   return {

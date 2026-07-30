@@ -8,16 +8,22 @@ import { fileURLToPath } from "node:url";
 import { commitPathsForProposal, resolveRepositoryPath, validateProposal } from "./lib/proposal.mjs";
 import {
   assertFrontierBudget,
+  buildFrontierPrompt,
   compactText,
+  findEscalationChannel,
   nextChannelAfterFailure,
   recordFailureFingerprint
 } from "./lib/escalation-policy.mjs";
 import { assertProviderQuota } from "./lib/provider-quota.mjs";
 import { resolvedSecret, secretsConfigured } from "./lib/secret-store.mjs";
 import { extractJsonObject } from "./lib/structured-output.mjs";
+import { yieldVoiceboxGpu } from "./lib/gpu-coordination.mjs";
 import {
   baselineValidationCommands,
-  recordWorkspaceBaselineFailure
+  canConsumeEscalationAnswer,
+  effectiveEscalationGuidance,
+  recordWorkspaceBaselineFailure,
+  selectOperatorPlan
 } from "./lib/task-isolation.mjs";
 import { readTelemetry, recordInference } from "./lib/telemetry.mjs";
 
@@ -29,6 +35,7 @@ const CONFIG_PATH = path.join(__dirname, "config.json");
 const CONTROL_DIR = path.join(ROOT, ".worker-control");
 const PAUSE_FILE = path.join(CONTROL_DIR, "paused");
 const STOP_FILE = path.join(CONTROL_DIR, "stop");
+const WAKE_FILE = path.join(CONTROL_DIR, "wake");
 const LOG_DIR = path.join(__dirname, "logs");
 const DETAIL_LOG = path.join(LOG_DIR, "worker-detail.log");
 const PLANS_DIR = path.join(ROOT, "PLANS");
@@ -63,7 +70,9 @@ async function main() {
           }
         }
       }
-    } catch {}
+    } catch {
+      // Optional environment files may not exist on every host.
+    }
   }
 
   await fs.mkdir(CONTROL_DIR, { recursive: true });
@@ -71,9 +80,22 @@ async function main() {
 
   if (argv.has("--status")) return printStatus();
   if (argv.has("--doctor")) return doctor();
-  if (argv.has("--pause")) return setStatus("paused", "Pause requested.");
-  if (argv.has("--resume")) return setStatus("idle", null);
-  if (argv.has("--stop")) return setStatus("stopped", "Stop requested.");
+  if (argv.has("--pause")) {
+    await fs.rm(WAKE_FILE, { force: true });
+    await fs.writeFile(PAUSE_FILE, `paused ${new Date().toISOString()}\n`, "utf8");
+    return setStatus("paused", "Pause requested.");
+  }
+  if (argv.has("--resume")) {
+    await fs.rm(PAUSE_FILE, { force: true });
+    await fs.rm(STOP_FILE, { force: true });
+    await fs.writeFile(WAKE_FILE, `wake ${new Date().toISOString()}\n`, "utf8");
+    return setStatus("idle", null);
+  }
+  if (argv.has("--stop")) {
+    await fs.rm(WAKE_FILE, { force: true });
+    await fs.writeFile(STOP_FILE, `stopped ${new Date().toISOString()}\n`, "utf8");
+    return setStatus("stopped", "Stop requested.");
+  }
   if (argv.has("--smoke-edit")) return smokeEdit();
   if (argv.has("--benchmark")) return benchmarkModels();
   if (argv.has("--escalate")) return runLocalEscalation();
@@ -278,14 +300,17 @@ async function gpuBusy(config) {
   for (const pattern of config.gpuDenyProcessPatterns || []) {
     if (lower.includes(String(pattern).toLowerCase())) {
       if (String(pattern).toLowerCase() === "voicebox") {
-        try {
-          const response = await fetch("http://127.0.0.1:17493/health", {
-            signal: AbortSignal.timeout(3000)
-          });
-          const health = await response.json();
-          if (response.ok && health.model_loaded !== true) continue;
-        } catch {
-          // If health cannot prove the model is unloaded, preserve the GPU lock.
+        const result = config.yieldVoiceboxBeforeLocalInference
+          ? await yieldVoiceboxGpu()
+          : null;
+        if (result?.yielded) {
+          if (result.modelWasLoaded) {
+            await log("Released Voicebox model so the local worker could claim the shared GPU.");
+          }
+          continue;
+        }
+        if (result?.reason) {
+          return { busy: true, reason: result.reason };
         }
       }
       return { busy: true, reason: `GPU process matched: ${pattern}` };
@@ -347,6 +372,10 @@ function quotePosixShell(value) {
 async function ollamaGenerate(config, model, prompt, timeoutMs = 20 * 60 * 1000, extraOptions = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const pauseWatcher = setInterval(() => {
+    if (existsSync(PAUSE_FILE)) controller.abort();
+  }, 1000);
+  pauseWatcher.unref();
   const startedAt = Date.now();
   const telemetry = extraOptions.telemetry || {};
   const options = { ...extraOptions };
@@ -385,6 +414,10 @@ async function ollamaGenerate(config, model, prompt, timeoutMs = 20 * 60 * 1000,
     let finalData = {};
     let lastProgressAt = 0;
     for await (const chunk of res.body) {
+      if (existsSync(PAUSE_FILE)) {
+        controller.abort();
+        throw new Error("Operator paused the worker during local inference.");
+      }
       buffer += decoder.decode(chunk, { stream: true });
       const lines = buffer.split(/\r?\n/);
       buffer = lines.pop() || "";
@@ -443,6 +476,7 @@ async function ollamaGenerate(config, model, prompt, timeoutMs = 20 * 60 * 1000,
     throw error;
   } finally {
     clearTimeout(timeout);
+    clearInterval(pauseWatcher);
   }
 }
 
@@ -572,6 +606,8 @@ ${JSON.stringify(task, null, 2)}
 
 Operator plan:
 ${compactText(operatorContext.activePlan || "(none provided)", 2500, "operator plan")}
+Plan source: ${operatorContext.planSource || "none"}
+${operatorContext.planSkippedReason ? `Plan selection note: ${operatorContext.planSkippedReason}` : ""}
 
 Test patterns:
 ${compactText(operatorContext.testPatterns || "(none provided)", 1600, "test patterns")}
@@ -620,8 +656,14 @@ async function commitTask(task, paths) {
 
 async function readOperatorContext(taskId) {
   const escalationAnswer = await readOptionalText(path.join(ESCALATION_INBOX, `${taskId}.md`), 6000);
+  const activePlan = await readOptionalText(path.join(PLANS_DIR, "ACTIVE_PLAN.md"), 5000);
+  const taskPlan = await readOptionalText(path.join(PLANS_DIR, "TASKS", `${taskId}.md`), 5000);
+  const selectedPlan = selectOperatorPlan({ taskId, activePlan, taskPlan });
   return {
-    activePlan: await readOptionalText(path.join(PLANS_DIR, "ACTIVE_PLAN.md"), 5000),
+    activePlan: selectedPlan.plan,
+    planSource: selectedPlan.source,
+    planScope: selectedPlan.scope,
+    planSkippedReason: selectedPlan.skippedReason,
     testPatterns: await readOptionalText(path.join(PLANS_DIR, "TEST_PATTERNS.md"), 3000),
     guardrails: await readOptionalText(path.join(PLANS_DIR, "GUARDRAILS.md"), 3000),
     escalationAnswer
@@ -707,7 +749,7 @@ function escalationLadder(config) {
 
   const ladder = [];
   for (const id of configuredIds) {
-    const channel = channels.find((item) => item.id === id) || channels.find((item) => channelMatches(item, id));
+    const channel = findEscalationChannel(channels, id);
     if (
       channel
       && channel.enabled !== false
@@ -782,6 +824,7 @@ function advanceAfterEscalationFailure(task, state, taskState, config, failedCha
     failedChannelId: failedChannel.id,
     nextChannelId: next.id,
     providerWide: selected.providerWide,
+    skippedChannelIds: selected.skippedChannelIds,
     error: String(error?.message || error).slice(0, 1000)
   });
   return next;
@@ -809,7 +852,7 @@ ${answer}
 
   taskState.status = "pending";
   taskState.repairCycles = 0;
-  taskState.escalationAnswer = body.slice(0, 20000);
+  taskState.escalationAnswer = effectiveEscalationGuidance(body).slice(0, 20000);
   taskState.escalationAnswerChannel = channel.id;
   taskState.escalationAnswerPath = finalPath;
   taskState.escalationResolvedAt = new Date().toISOString();
@@ -830,7 +873,7 @@ async function consumeEscalationAnswers(tasks, state, config) {
     const taskId = entry.name.replace(/\.md$/i, "").split(".")[0];
     const task = tasks.find((item) => item.id === taskId);
     const taskState = state.taskStates[taskId];
-    if (!task || !taskState || !["awaiting_escalation", "blocked"].includes(taskState.status)) continue;
+    if (!task || !taskState || !canConsumeEscalationAnswer(taskState.status)) continue;
 
     const source = path.join(ESCALATION_INBOX, entry.name);
     const answer = await fs.readFile(source, "utf8");
@@ -916,11 +959,15 @@ function buildTaskPrompt(task, state, tree, focusFiles, operatorContext) {
 
 You must inspect the provided files before editing. Make bounded, production-minded changes for exactly one task. Keep persistent state compact. Do not add secrets. Do not access paths outside the repository.
 The human operator may provide plans, PR details, test patterns, and extra guardrails. Treat them as high-priority task guidance.
-Never return placeholders such as "see attached", "add your code here", or "keep existing styles". Every edit must include complete file content.
+Never return placeholders such as "see attached", "add your code here", or "keep existing styles". Every replacement and new file must be complete.
 If stuck, fail compactly; do not improvise with placeholders.
+Prefer the fewest and smallest existing integration points. Do not rewrite functioning infrastructure from completed dependencies. Keep the complete JSON proposal under 14000 characters.
+For existing files, prefer compact exact replacements over full-file content. Each find string must be copied exactly from the provided file and occur once. Group multiple replacements for the same path in one edit.
 
 Operator active plan:
 ${operatorContext.activePlan || "(none provided)"}
+Plan source: ${operatorContext.planSource || "none"}
+${operatorContext.planSkippedReason ? `Plan selection note: ${operatorContext.planSkippedReason}` : ""}
 
 Operator test patterns:
 ${operatorContext.testPatterns || "(none provided)"}
@@ -944,7 +991,13 @@ Return only JSON with this shape:
 {
   "summary": "short summary of intended changes",
   "edits": [
-    {"path": "relative/path/from/repo/root", "content": "complete new file content or a native object for a .json file"}
+    {
+      "path": "relative/existing-file",
+      "replacements": [
+        {"find": "exact unique existing text", "replace": "complete replacement text"}
+      ]
+    },
+    {"path": "relative/new-file", "content": "complete new file content"}
   ],
   "commands": [
     "optional allowlisted command"
@@ -952,7 +1005,7 @@ Return only JSON with this shape:
   "notes": ["short note"]
 }
 
-Use full-file replacement content for every edited file. For .json paths, content may be a native JSON object and the worker will serialize it. All other content must be a string. If a file should be created, include its full content. If you need dependencies, edit package.json and include "npm install" as a command.`;
+Use exactly one edit mode per path: replacements for an existing file, or content for a new/full-file replacement. Never send both. Prefer replacements whenever practical because they are faster and less likely to truncate. For .json paths, full content may be a native JSON object and the worker will serialize it. If you need dependencies, edit package.json and include "npm install" as a command.`;
 }
 
 async function createEscalationRequest(task, state, taskState, config, channel, ladder = []) {
@@ -1011,6 +1064,10 @@ ${JSON.stringify(task, null, 2)}
 \`\`\`markdown
 ${compactText(operatorContext.activePlan || "(none provided)", Math.min(2500, Math.floor(packetLimit * 0.16)), "operator plan")}
 \`\`\`
+
+Plan source: ${operatorContext.planSource || "none"}
+
+${operatorContext.planSkippedReason ? `Plan selection note: ${operatorContext.planSkippedReason}` : ""}
 
 ## Test Patterns
 
@@ -1078,24 +1135,21 @@ Return concise reviewer guidance only. Do not emit JSON edits. Focus on how the 
 
 async function invokeCodexEscalation(config, task, channel, requestPath) {
   const budget = config.escalation?.frontierBudget || {};
-  const request = compactText(await fs.readFile(requestPath, "utf8"), channel.maxPromptChars || budget.maxPromptChars || 14000, "frontier request");
+  const promptLimit = Math.min(
+    channel.maxPromptChars || Number.POSITIVE_INFINITY,
+    budget.maxPromptChars || Number.POSITIVE_INFINITY,
+    14000
+  );
+  const prompt = buildFrontierPrompt(await fs.readFile(requestPath, "utf8"), {
+    maxChars: promptLimit,
+    maxAnswerWords: channel.maxAnswerWords || 900
+  });
   const codexCommand = channel.command || config.escalation?.codexCommand || process.env.CODEX_CLI_PATH || "codex";
   const timeoutMs = (channel.timeoutSeconds || 1800) * 1000;
   const codexWorkDir = channel.workDir || config.escalation?.codexWorkDir || path.join(os.tmpdir(), "edgeops-codex-escalations");
   await fs.mkdir(codexWorkDir, { recursive: true });
   await fs.mkdir(ESCALATION_FRONTIER, { recursive: true });
   const outputPath = path.join(ESCALATION_FRONTIER, `${new Date().toISOString().replace(/[:.]/g, "-")}-${task.id}-${channel.id}.md`);
-  const prompt = `${request}
-
-You are a frontier escalation agent for a local-first autonomous software loop.
-
-Rules:
-- Produce final guidance only. Do not directly edit files.
-- Prefer concise, implementation-oriented instructions over broad design prose.
-- Use the evidence in the request first. Read extra files only if absolutely necessary.
-- Keep the answer under ${channel.maxAnswerWords || 900} words.
-- Do not include secrets, tokens, raw logs, or unrelated repository content.
-`;
   const telemetry = await readTelemetry(RUNTIME_DIR, 500);
   assertFrontierBudget({ channel, promptChars: prompt.length, taskId: task.id, telemetry, config });
   const args = [
@@ -1476,7 +1530,9 @@ async function runLocalEscalation() {
   state.taskStates[taskId] = taskState;
 
   const channels = allEscalationChannels(config);
-  const channel = channels.find((item) => item.enabled !== false && (!channelId || channelMatches(item, channelId)));
+  const channel = channelId
+    ? findEscalationChannel(channels, channelId, { allowDisabledExact: true })
+    : channels.find((item) => item.enabled !== false);
   if (!channel) throw new Error(`No enabled escalation channel${channelId ? ` named ${channelId}` : ""}.`);
 
   let request = await readOptionalText(path.join(ESCALATION_OUTBOX, `${taskId}.md`), 40000);
@@ -1538,6 +1594,10 @@ async function processTask(task, config, state) {
     const tree = await listTree();
     const focusFiles = await readFocusFiles(task);
     const operatorContext = await readOperatorContext(task.id);
+    taskState.operatorPlanSource = operatorContext.planSource;
+    taskState.operatorPlanScope = operatorContext.planScope;
+    taskState.operatorPlanSkippedReason = operatorContext.planSkippedReason;
+    await saveState(state);
     const prompt = buildTaskPrompt(task, state, tree, focusFiles, operatorContext);
     const raw = await ollamaGenerate(config, model, prompt, 20 * 60 * 1000, {
       jsonMode: true,
@@ -1587,6 +1647,18 @@ async function processTask(task, config, state) {
     if (editBackups.length && config.restoreFailedAttemptEdits !== false) {
       await restoreEditBackups(editBackups);
       await log(`Restored failed edit attempt for ${task.id}`, { files: editBackups.map((backup) => backup.path) });
+    }
+    if (existsSync(PAUSE_FILE)) {
+      taskState.status = "pending";
+      taskState.lastError = "Task returned to pending because the worker was paused.";
+      state.status = "paused";
+      state.currentTaskId = null;
+      state.lastError = null;
+      state.workerPid = process.pid;
+      delete taskState.lease;
+      await saveState(state);
+      await log(`Paused task ${task.id} during local inference`);
+      return;
     }
     taskState.status = "pending";
     taskState.repairCycles = (taskState.repairCycles || 0) + 1;
@@ -1661,6 +1733,7 @@ async function recoverInterruptedTask(state) {
 }
 
 async function runOnce() {
+  await fs.rm(WAKE_FILE, { force: true });
   const config = await loadConfig();
   const state = await loadState(config);
   await recoverInterruptedTask(state);
@@ -1739,6 +1812,10 @@ async function responsiveSleep(totalMs) {
   const deadline = Date.now() + totalMs;
   while (Date.now() < deadline) {
     if (existsSync(STOP_FILE) || existsSync(PAUSE_FILE)) return;
+    if (existsSync(WAKE_FILE)) {
+      await fs.rm(WAKE_FILE, { force: true });
+      return;
+    }
     await sleep(Math.min(5000, deadline - Date.now()));
   }
 }
@@ -1895,6 +1972,10 @@ async function benchmarkModels() {
 }
 
 main().catch(async (error) => {
+  if (argv.has("--escalate")) {
+    console.error(error);
+    process.exit(1);
+  }
   const config = await loadConfig().catch(() => ({}));
   const state = await loadState(config).catch(() => defaultState(config));
   state.status = "error";

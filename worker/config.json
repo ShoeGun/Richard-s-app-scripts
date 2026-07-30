@@ -14,7 +14,7 @@
   "routing": {
     "utilityModel": "qwen3.5:4b",
     "implementerModel": "qwen3.5:9b",
-    "repairModel": "qwen2.5-coder:14b",
+    "repairModel": "qwen2.5-coder:7b",
     "reviewerModel": "qwen2.5-coder:14b"
   },
   "telemetry": {
@@ -129,7 +129,7 @@
     "maxRepeatedFailureFingerprint": 2,
     "codexCommand": "C:\\Users\\Richard\\AppData\\Local\\Programs\\OpenAI\\Codex\\bin\\codex.exe",
     "ladder": [
-      "qwen3.6-supervisor-local",
+      "qwen3.5-fast-local",
       "hermes-ollama-local",
       "groq-gpt-oss-120b",
       "github-models-codestral",
@@ -299,7 +299,7 @@
     "frontierBudget": {
       "enabled": true,
       "maxPromptChars": 14000,
-      "maxCallsPerTask": 1,
+      "maxCallsPerTask": 2,
       "maxCallsPerDay": 2
     },
     "frontierChannels": [
@@ -308,7 +308,7 @@
         "type": "codex",
         "model": "gpt-5.4",
         "label": "GPT 5.4 sparse frontier unblocker",
-        "enabled": false,
+        "enabled": true,
         "autoInvoke": false,
         "reasoningEffort": "low",
         "timeoutSeconds": 1800,
@@ -322,7 +322,7 @@
         "type": "codex",
         "model": "gpt-5.6-sol",
         "label": "GPT 5.6 fallback frontier unblocker",
-        "enabled": false,
+        "enabled": true,
         "autoInvoke": false,
         "reasoningEffort": "medium",
         "timeoutSeconds": 2400,
@@ -656,10 +656,10 @@
         "type": "ollama",
         "model": "qwen3.5:4b",
         "enabled": true,
-        "autoInvoke": false,
+        "autoInvoke": true,
         "contextTokens": 8192,
         "temperature": 0.1,
-        "instructions": "Use for inexpensive routing, context compression, schema repair, and bounded experiments."
+        "instructions": "Fast local supervisor for routing, context compression, schema repair, and concise blocker diagnosis."
       },
       {
         "id": "qwen3.5-default-local",
@@ -675,12 +675,12 @@
         "id": "qwen3.6-supervisor-local",
         "type": "ollama",
         "model": "qwen3.6:latest",
-        "enabled": true,
-        "autoInvoke": true,
+        "enabled": false,
+        "autoInvoke": false,
         "think": true,
         "contextTokens": 16384,
         "temperature": 0.1,
-        "instructions": "Slow independent local supervisor. Diagnose stubborn failures and return concise recovery guidance only."
+        "instructions": "Disabled on this host because the 24 GB model cannot fit available VRAM and host allocation limits."
       },
       {
         "id": "qwen3-32b-local",
@@ -706,6 +706,7 @@
     "stable-diffusion",
     "lm studio"
   ],
+  "yieldVoiceboxBeforeLocalInference": true,
   "allowedCommandPrefixes": [
     "npm install",
     "npm run typecheck",
