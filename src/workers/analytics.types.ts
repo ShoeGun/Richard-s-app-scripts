@@ -1,7 +1,12 @@
+import type { StructuredAnalysisPlan } from '../lib/analysis-plan-schema';
+import type { AnalysisResult } from '../lib/deterministic-analysis';
+
 export type AnalyticsErrorCode =
   | 'INITIALIZATION_FAILED'
   | 'DATASET_LOAD_FAILED'
   | 'SCHEMA_INSPECTION_FAILED'
+  | 'PLAN_VALIDATION_FAILED'
+  | 'PLAN_EXECUTION_FAILED'
   | 'INVALID_REQUEST';
 
 export interface AnalyticsError {
@@ -31,7 +36,17 @@ export interface InspectSchemaRequest {
   requestId: string;
 }
 
-export type AnalyticsRequest = InitializeRequest | LoadDatasetRequest | InspectSchemaRequest;
+export interface ExecutePlanRequest {
+  type: 'execute-plan';
+  requestId: string;
+  plan: StructuredAnalysisPlan;
+}
+
+export type AnalyticsRequest =
+  | InitializeRequest
+  | LoadDatasetRequest
+  | InspectSchemaRequest
+  | ExecutePlanRequest;
 
 export interface InitializedResponse {
   type: 'initialized';
@@ -52,6 +67,13 @@ export interface SchemaInspectedResponse {
   schema: SchemaColumn[];
 }
 
+export interface AnalysisExecutedResponse {
+  type: 'analysis-executed';
+  requestId: string;
+  ok: true;
+  result: AnalysisResult;
+}
+
 export interface AnalyticsErrorResponse {
   type: 'analytics-error';
   requestId: string;
@@ -63,4 +85,5 @@ export type AnalyticsResponse =
   | InitializedResponse
   | DatasetLoadedResponse
   | SchemaInspectedResponse
+  | AnalysisExecutedResponse
   | AnalyticsErrorResponse;

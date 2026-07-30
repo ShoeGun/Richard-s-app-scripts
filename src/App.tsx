@@ -1,7 +1,9 @@
 import React from 'react';
 
 import { createAnalyticsClient } from './lib/analytics';
+import type { AnalysisResult } from './lib/deterministic-analysis';
 import { LocalAiClient } from './lib/local-ai';
+import { parseModelPlan } from './lib/model-plan';
 import { BROWSER_MODEL_ID, type ModelWorkerResponse } from './workers/model.types';
 import type { SchemaColumn } from './workers/analytics.types';
 
@@ -15,8 +17,9 @@ type LocalAiState =
   | { status: 'idle' }
   | { status: 'checking' }
   | { status: 'loading'; progress: number | null; loaded: number | null; total: number | null }
-  | { status: 'ready'; output: string }
+  | { status: 'ready'; output: string; result?: AnalysisResult }
   | { status: 'generating'; output: string }
+  | { status: 'executing'; output: string }
   | { status: 'error'; message: string };
 
 const formatBytes = (value: number | null) => {
@@ -27,10 +30,32 @@ const formatBytes = (value: number | null) => {
 const App = () => {
   const [analytics, setAnalytics] = React.useState<AnalyticsState>({ status: 'idle' });
   const [localAi, setLocalAi] = React.useState<LocalAiState>({ status: 'idle' });
-  const [prompt, setPrompt] = React.useState('Suggest a safe analysis plan for the demo dataset.');
+  const [prompt, setPrompt] = React.useState('Group projects by category, count them, sort by count descending, and use a bar chart.');
   const localAiClient = React.useRef<LocalAiClient | null>(null);
 
   React.useEffect(() => () => localAiClient.current?.dispose(), []);
+
+  const executeGeneratedPlan = async (raw: string) => {
+    setLocalAi({ status: 'executing', output: raw });
+    const client = createAnalyticsClient();
+    try {
+      const plan = parseModelPlan(raw);
+      await client.loadDataset();
+      const result = await client.executePlan(plan);
+      setLocalAi({
+        status: 'ready',
+        output: JSON.stringify(plan, null, 2),
+        result
+      });
+    } catch (error) {
+      setLocalAi({
+        status: 'error',
+        message: error instanceof Error ? error.message : String(error)
+      });
+    } finally {
+      client.dispose();
+    }
+  };
 
   const handleModelMessage = (message: ModelWorkerResponse) => {
     if (message.type === 'model-progress') {
@@ -50,7 +75,7 @@ const App = () => {
         output: `${current.status === 'generating' ? current.output : ''}${message.text}`
       }));
     } else if (message.type === 'generation-complete') {
-      setLocalAi({ status: 'ready', output: message.text });
+      void executeGeneratedPlan(message.text);
     } else if (message.type === 'model-error') {
       setLocalAi({ status: 'error', message: message.message });
     }
@@ -144,7 +169,7 @@ const App = () => {
         {localAi.status === 'error' && (
           <p className="error-state" role="alert">{localAi.message}</p>
         )}
-        {(localAi.status === 'ready' || localAi.status === 'generating') && (
+        {(localAi.status === 'ready' || localAi.status === 'generating' || localAi.status === 'executing') && (
           <div className="model-console">
             <label htmlFor="local-ai-prompt">Ask the browser model</label>
             <textarea
@@ -152,12 +177,40 @@ const App = () => {
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               rows={4}
-              disabled={localAi.status === 'generating'}
+              disabled={localAi.status === 'generating' || localAi.status === 'executing'}
             />
-            <button type="button" onClick={runLocalAi} disabled={localAi.status === 'generating' || !prompt.trim()}>
-              {localAi.status === 'generating' ? 'Generating locally' : 'Run on WebGPU'}
+            <button
+              type="button"
+              onClick={runLocalAi}
+              disabled={localAi.status === 'generating' || localAi.status === 'executing' || !prompt.trim()}
+            >
+              {localAi.status === 'generating'
+                ? 'Generating locally'
+                : localAi.status === 'executing'
+                  ? 'Validating plan'
+                  : 'Run on WebGPU'}
             </button>
             {localAi.output && <output aria-live="polite">{localAi.output}</output>}
+            {localAi.status === 'ready' && localAi.result && (
+              <table aria-label="Local AI analysis result">
+                <thead>
+                  <tr>
+                    {Object.keys(localAi.result.rows[0] ?? {}).map((field) => (
+                      <th scope="col" key={field}>{field}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {localAi.result.rows.map((row, index) => (
+                    <tr key={index}>
+                      {Object.values(row).map((value, valueIndex) => (
+                        <td key={valueIndex}>{String(value ?? '')}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
       </section>

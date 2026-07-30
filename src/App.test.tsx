@@ -9,6 +9,7 @@ class MockWorker {
   onmessage: ((event: MessageEvent<AnalyticsResponse | ModelWorkerResponse>) => void) | null = null;
   onerror: ((event: ErrorEvent) => void) | null = null;
   static failSchema = false;
+  static invalidPlan = false;
 
   postMessage(request: AnalyticsRequest | ModelWorkerRequest) {
     if (request.type === 'load-model') {
@@ -27,8 +28,29 @@ class MockWorker {
     if (request.type === 'generate') {
       queueMicrotask(() => {
         this.onmessage?.({
-          data: { type: 'generation-complete', text: 'Use a grouped count.' }
+          data: {
+            type: 'generation-complete',
+            text: MockWorker.invalidPlan
+              ? '{"sql":"DROP TABLE demo"}'
+              : '{"groupBy":["category"],"aggregations":[{"operator":"count","as":"projects"}],"chart":{"type":"bar","x":"category","y":"projects"}}'
+          }
         } as MessageEvent<ModelWorkerResponse>);
+      });
+      return;
+    }
+    if (request.type === 'execute-plan') {
+      queueMicrotask(() => {
+        this.onmessage?.(new MessageEvent<AnalyticsResponse | ModelWorkerResponse>('message', {
+          data: {
+            type: 'analysis-executed',
+            requestId: request.requestId,
+            ok: true,
+            result: {
+              rows: [{ category: 'ai', projects: 2 }],
+              chart: { type: 'bar', x: 'category', y: 'projects' }
+            }
+          }
+        }));
       });
       return;
     }
@@ -72,6 +94,7 @@ class MockWorker {
 describe('App', () => {
   beforeEach(() => {
     MockWorker.failSchema = false;
+    MockWorker.invalidPlan = false;
     vi.stubGlobal('Worker', MockWorker);
     vi.stubGlobal('crypto', { randomUUID: vi.fn(() => `request-${Math.random()}`) });
     Object.defineProperty(navigator, 'gpu', {
@@ -92,7 +115,7 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: /launch local ai/i })).toBeTruthy();
   });
 
-  it('loads the browser model only after launch and accepts a local prompt', async () => {
+  it('loads the browser model only after launch and executes a validated local plan', async () => {
     render(<App />);
 
     expect(screen.queryByLabelText(/ask the browser model/i)).toBeNull();
@@ -103,7 +126,21 @@ describe('App', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /run on webgpu/i }));
     await waitFor(() => {
-      expect(screen.getByText(/use a grouped count/i)).toBeTruthy();
+      expect(screen.getByRole('table', { name: /local ai analysis result/i })).toBeTruthy();
+    });
+    expect(screen.getByText('projects')).toBeTruthy();
+    expect(screen.getByText('2')).toBeTruthy();
+  });
+
+  it('surfaces invalid local-model plans without executing them', async () => {
+    MockWorker.invalidPlan = true;
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /launch local ai/i }));
+    await waitFor(() => expect(screen.getByLabelText(/ask the browser model/i)).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /run on webgpu/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toMatch(/unsupported plan/i);
     });
   });
 

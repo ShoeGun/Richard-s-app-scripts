@@ -3,6 +3,8 @@ import type {
   AnalyticsResponse,
   SchemaColumn
 } from '../workers/analytics.types';
+import type { StructuredAnalysisPlan } from './analysis-plan-schema';
+import type { AnalysisResult } from './deterministic-analysis';
 
 type PendingRequest = {
   resolve: (response: AnalyticsResponse) => void;
@@ -57,6 +59,18 @@ export class AnalyticsClient {
     });
     if (response.type !== 'schema-inspected') throw new Error('Unexpected schema response.');
     return response.schema;
+  }
+
+  async executePlan(plan: StructuredAnalysisPlan): Promise<AnalysisResult> {
+    const response = await this.request({
+      type: 'execute-plan',
+      requestId: crypto.randomUUID(),
+      plan
+    });
+    if (response.type !== 'analysis-executed') {
+      throw new Error('Unexpected analysis response.');
+    }
+    return response.result;
   }
 
   private request(request: AnalyticsRequest) {

@@ -68,12 +68,18 @@ async function generate(prompt: string) {
   const messages = [
     {
       role: 'system' as const,
-      content: 'You are a concise portfolio data-analysis assistant. Suggest safe analytical steps and never invent results.'
+      content: [
+        'Return only a JSON analysis plan with these optional keys:',
+        'filters, groupBy, aggregations, sort, limit, and chart.',
+        'Never return SQL, code, markdown, commentary, or unsupported keys.',
+        'Example:',
+        '{"groupBy":["category"],"aggregations":[{"operator":"count","as":"projects"}],"sort":[{"field":"projects","direction":"desc"}],"chart":{"type":"bar","x":"category","y":"projects"}}'
+      ].join(' ')
     },
     { role: 'user' as const, content: prompt }
   ];
   const output = await generator(messages, {
-    max_new_tokens: 128,
+    max_new_tokens: 256,
     do_sample: false,
     streamer
   });

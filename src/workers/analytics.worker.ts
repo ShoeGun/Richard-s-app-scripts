@@ -4,6 +4,15 @@ import ehWorkerUrl from '@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?ur
 import mvpWasmUrl from '@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm?url';
 import mvpWorkerUrl from '@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url';
 
+import {
+  AnalysisPlanValidationError,
+  validateAnalysisPlan
+} from '../lib/analysis-plan-schema';
+import {
+  executeAnalysis,
+  type AnalysisRow,
+  type AnalysisValue
+} from '../lib/deterministic-analysis';
 import type {
   AnalyticsErrorCode,
   AnalyticsRequest,
@@ -119,6 +128,32 @@ async function inspectSchema(): Promise<SchemaColumn[]> {
   }
 }
 
+function normalizeValue(value: unknown): AnalysisValue {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : String(value);
+  if (typeof value === 'bigint') {
+    const numeric = Number(value);
+    return Number.isSafeInteger(numeric) ? numeric : value.toString();
+  }
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+}
+
+async function readDatasetRows(): Promise<AnalysisRow[]> {
+  if (!datasetLoaded) await loadDataset();
+  const db = await initializeDuckDb();
+  const connection = await db.connect();
+  try {
+    const result = await connection.query('SELECT * FROM demo');
+    const fields = result.schema.fields.map((field) => field.name);
+    return result.toArray().map((row) => Object.fromEntries(
+      fields.map((field) => [field, normalizeValue(row[field])])
+    ));
+  } finally {
+    await connection.close();
+  }
+}
+
 async function handleRequest(request: AnalyticsRequest): Promise<AnalyticsResponse> {
   try {
     switch (request.type) {
@@ -135,13 +170,26 @@ async function handleRequest(request: AnalyticsRequest): Promise<AnalyticsRespon
           ok: true,
           schema: await inspectSchema()
         };
+      case 'execute-plan': {
+        const plan = validateAnalysisPlan(request.plan);
+        return {
+          type: 'analysis-executed',
+          requestId: request.requestId,
+          ok: true,
+          result: executeAnalysis(await readDatasetRows(), plan)
+        };
+      }
     }
   } catch (error) {
     const code = request.type === 'initialize'
       ? 'INITIALIZATION_FAILED'
       : request.type === 'load-dataset'
         ? 'DATASET_LOAD_FAILED'
-        : 'SCHEMA_INSPECTION_FAILED';
+        : request.type === 'inspect-schema'
+          ? 'SCHEMA_INSPECTION_FAILED'
+          : error instanceof AnalysisPlanValidationError
+            ? 'PLAN_VALIDATION_FAILED'
+            : 'PLAN_EXECUTION_FAILED';
     return errorResponse(request.requestId, code, error);
   }
 }
