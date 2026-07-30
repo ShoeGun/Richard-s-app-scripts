@@ -2,14 +2,36 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import App from './App';
+import type { ModelWorkerRequest, ModelWorkerResponse } from './workers/model.types';
 import type { AnalyticsRequest, AnalyticsResponse } from './workers/analytics.types';
 
 class MockWorker {
-  onmessage: ((event: MessageEvent<AnalyticsResponse>) => void) | null = null;
+  onmessage: ((event: MessageEvent<AnalyticsResponse | ModelWorkerResponse>) => void) | null = null;
   onerror: ((event: ErrorEvent) => void) | null = null;
   static failSchema = false;
 
-  postMessage(request: AnalyticsRequest) {
+  postMessage(request: AnalyticsRequest | ModelWorkerRequest) {
+    if (request.type === 'load-model') {
+      queueMicrotask(() => {
+        this.onmessage?.({
+          data: {
+            type: 'model-ready',
+            model: 'test-browser-model',
+            device: 'webgpu',
+            cached: true
+          }
+        } as MessageEvent<ModelWorkerResponse>);
+      });
+      return;
+    }
+    if (request.type === 'generate') {
+      queueMicrotask(() => {
+        this.onmessage?.({
+          data: { type: 'generation-complete', text: 'Use a grouped count.' }
+        } as MessageEvent<ModelWorkerResponse>);
+      });
+      return;
+    }
     const response = this.responseFor(request);
     queueMicrotask(() => {
       this.onmessage?.({ data: response } as MessageEvent<AnalyticsResponse>);
@@ -52,6 +74,10 @@ describe('App', () => {
     MockWorker.failSchema = false;
     vi.stubGlobal('Worker', MockWorker);
     vi.stubGlobal('crypto', { randomUUID: vi.fn(() => `request-${Math.random()}`) });
+    Object.defineProperty(navigator, 'gpu', {
+      configurable: true,
+      value: { requestAdapter: vi.fn(async () => ({})) }
+    });
   });
 
   afterEach(() => {
@@ -64,6 +90,32 @@ describe('App', () => {
 
     expect(screen.getByRole('heading', { name: /richard jones/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /launch local ai/i })).toBeTruthy();
+  });
+
+  it('loads the browser model only after launch and accepts a local prompt', async () => {
+    render(<App />);
+
+    expect(screen.queryByLabelText(/ask the browser model/i)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /launch local ai/i }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/ask the browser model/i)).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /run on webgpu/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/use a grouped count/i)).toBeTruthy();
+    });
+  });
+
+  it('explains when WebGPU is unavailable without creating the model worker', async () => {
+    Object.defineProperty(navigator, 'gpu', { configurable: true, value: undefined });
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: /launch local ai/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toMatch(/webgpu is unavailable/i);
+    });
   });
 
   it('loads and displays the demo dataset schema through the analytics client', async () => {
