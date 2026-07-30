@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import App from './App';
@@ -128,8 +128,9 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.getByRole('table', { name: /local ai analysis result/i })).toBeTruthy();
     });
-    expect(screen.getByText('projects')).toBeTruthy();
-    expect(screen.getByText('2')).toBeTruthy();
+    const table = screen.getByRole('table', { name: /local ai analysis result/i });
+    expect(within(table).getByText('projects')).toBeTruthy();
+    expect(within(table).getByText('2')).toBeTruthy();
   });
 
   it('surfaces invalid local-model plans without executing them', async () => {

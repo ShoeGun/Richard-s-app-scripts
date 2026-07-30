@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { AnalysisResultView } from './components/AnalysisResultView';
 import { createAnalyticsClient } from './lib/analytics';
 import type { AnalysisResult } from './lib/deterministic-analysis';
 import { LocalAiClient } from './lib/local-ai';
@@ -30,7 +31,7 @@ const formatBytes = (value: number | null) => {
 const App = () => {
   const [analytics, setAnalytics] = React.useState<AnalyticsState>({ status: 'idle' });
   const [localAi, setLocalAi] = React.useState<LocalAiState>({ status: 'idle' });
-  const [prompt, setPrompt] = React.useState('Group projects by category, count them, sort by count descending, and use a bar chart.');
+  const [prompt, setPrompt] = React.useState('Group people by age, count rows as people, sort by people descending, and use a bar chart with age on x and people on y.');
   const localAiClient = React.useRef<LocalAiClient | null>(null);
 
   React.useEffect(() => () => localAiClient.current?.dispose(), []);
@@ -192,24 +193,7 @@ const App = () => {
             </button>
             {localAi.output && <output aria-live="polite">{localAi.output}</output>}
             {localAi.status === 'ready' && localAi.result && (
-              <table aria-label="Local AI analysis result">
-                <thead>
-                  <tr>
-                    {Object.keys(localAi.result.rows[0] ?? {}).map((field) => (
-                      <th scope="col" key={field}>{field}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {localAi.result.rows.map((row, index) => (
-                    <tr key={index}>
-                      {Object.values(row).map((value, valueIndex) => (
-                        <td key={valueIndex}>{String(value ?? '')}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <AnalysisResultView result={localAi.result} />
             )}
           </div>
         )}
