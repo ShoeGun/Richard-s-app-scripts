@@ -6,16 +6,95 @@
   "maxOutputTokens": 4096,
   "temperature": 0.15,
   "keepAlive": "2m",
+  "managedServices": {
+    "openclaw": {
+      "label": "OpenClaw Mac",
+      "kind": "remote agent gateway",
+      "sshHost": "openclaw-mac",
+      "nodePath": "/Users/rich/.nvm/versions/node/v24.18.0/bin/node",
+      "cliPath": "/Users/rich/pinokio/bin/miniconda/lib/node_modules/openclaw/dist/index.js",
+      "port": 18789,
+      "lifecycle": "remote LaunchAgent; probe over configured SSH alias"
+    },
+    "colibri-glm52": {
+      "label": "GLM 5.2 Colibri",
+      "kind": "local supervisor",
+      "healthUrl": "http://127.0.0.1:1236/health",
+      "modelsUrl": "http://127.0.0.1:1236/v1/models",
+      "endpoint": "http://127.0.0.1:1236/v1/chat/completions",
+      "lifecycle": "manual-start; single-request queue; no automatic escalation"
+    },
+    "comfyui": {
+      "label": "ComfyUI",
+      "kind": "local GPU tool",
+      "healthUrl": "http://127.0.0.1:8188/system_stats",
+      "endpoint": "http://127.0.0.1:8188",
+      "rootEnv": "COMFYUI_ROOT",
+      "startScript": "scripts/start-comfyui.ps1",
+      "stopScript": "scripts/stop-comfyui.ps1",
+      "lifecycle": "loopback-only; wait for GPU owner; stop only registered owners when explicitly yielded",
+      "workflows": {
+        "trellis2": {
+          "label": "TRELLIS.2 image-to-3D",
+          "adapter": "comfyui",
+          "status": "installing-unverified",
+          "requiresGpuLease": true,
+          "requires": "ComfyUI workflow/API format, compatible CUDA runtime, and a verified model directory"
+        }
+      }
+    },
+    "unreal": {
+      "label": "Unreal Engine 5.1 MCP",
+      "kind": "local editor tool",
+      "healthUrl": "http://127.0.0.1:30010/remote/info",
+      "endpoint": "http://127.0.0.1:8000/mcp",
+      "project": "C:\\Users\\Richard\\Documents\\Unreal Projects\\MyProject 5.1\\MyProject.uproject",
+      "lifecycle": "manual; loopback-only; serialize editor calls; require a GPU lease before long work"
+    }
+  },
+  "workflowRoles": {
+    "deepPlanner": {
+      "model": "glm-5.2-colibri",
+      "provider": "colibri",
+      "class": "local",
+      "enabled": true,
+      "autoStart": false,
+      "contextTokens": 32768,
+      "purpose": "Detailed plans and tool-aware decomposition when the fast local route needs help"
+    },
+    "gpuToolSupervisor": {
+      "model": "glm-5.2-colibri",
+      "provider": "colibri",
+      "class": "local",
+      "enabled": true,
+      "autoStart": false,
+      "purpose": "Reserve ComfyUI or Unreal GPU work, inspect artifacts, and hand off evaluation"
+    },
+    "evaluationReviewer": {
+      "model": "glm-5.2-colibri",
+      "provider": "colibri",
+      "class": "local",
+      "enabled": true,
+      "autoStart": false,
+      "purpose": "Review long-running tool output and choose the next local step"
+    }
+  },
   "idleSleepSeconds": 120,
   "repairSleepSeconds": 30,
   "busySleepSeconds": 180,
+  "skipNpmInstallIfPresent": true,
   "maxRepairCycles": 2,
   "restoreFailedAttemptEdits": true,
   "routing": {
     "utilityModel": "qwen3.5:4b",
     "implementerModel": "qwen3.5:9b",
-    "repairModel": "qwen2.5-coder:7b",
-    "reviewerModel": "qwen2.5-coder:14b"
+    "repairModel": "qwen2.5-coder:14b",
+    "reviewerModel": "qwen2.5-coder:14b",
+    "trajectory": {
+      "maxLocalAttempts": 2,
+      "maxPostGuidanceAttempts": 3,
+      "maxRuntimeRetries": 2
+    }
   },
   "telemetry": {
     "budgetWindowHours": 24,
@@ -91,6 +170,14 @@
         "provider": "zai",
         "class": "subscription",
         "notes": "Stronger Z.ai Coding Plan recovery route. This model can consume plan quota faster than GLM-4.7."
+      },
+      {
+        "model": "glm-5.2-colibri",
+        "provider": "colibri",
+        "class": "local",
+        "inputUsdPerMillion": 0,
+        "outputUsdPerMillion": 0,
+        "notes": "Slow disk-streamed local GLM-5.2 supervisor. Manual selection only; keep fast Ollama models on the automatic path."
       }
     ]
   },
@@ -302,6 +389,19 @@
       "maxCallsPerTask": 2,
       "maxCallsPerDay": 2
     },
+    "sshConfig": "C:\\Users\\Richard\\.ssh\\config",
+    "preApprovalResearch": {
+      "enabled": true,
+      "model": "qwen3.5:4b",
+      "contextTokens": 8192,
+      "temperature": 0.1,
+      "maxPasses": 1,
+      "webSearch": {
+        "enabled": true,
+        "maxResults": 5,
+        "timeoutMs": 8000
+      }
+    },
     "frontierChannels": [
       {
         "id": "gpt-5.4",
@@ -502,12 +602,13 @@
       {
         "id": "hermes-ollama-local",
         "type": "hermes",
-        "model": "qwen3.5:9b",
-        "telemetryModel": "hermes/qwen3.5:9b",
+        "model": "hermes-test-huihui_ai-qwen3.5-abliterated-9b-64k:latest",
+        "telemetryModel": "hermes/huihui-qwen3.5-9b-64k",
         "provider": "local-ollama",
-        "label": "Hermes harness with local Ollama",
+        "label": "Local research and context recovery",
         "enabled": true,
         "autoInvoke": true,
+        "contextTokens": 65536,
         "command": "ssh",
         "sshHost": "openclaw-mac",
         "hermesCommand": "/Users/rich/.local/bin/hermes",
@@ -515,8 +616,8 @@
         "maxTurns": 6,
         "maxPromptChars": 18000,
         "maxAnswerWords": 900,
-        "ignoreRules": true,
-        "instructions": "Use Hermes as a capable local recovery harness. Use available tools and skills when they materially help diagnose or resolve the blocker. Keep work scoped to the task, preserve evidence, and do not push, publish, expose secrets, or make destructive system changes."
+        "ignoreRules": false,
+        "instructions": "Act as the local research and context-recovery agent. Inspect the task packet and use Hermes tools to gather only missing repository, documentation, or source evidence. Return a compact context delta, verified diagnosis, and next executable action. Do not rewrite an already-settled implementation plan, push, publish, expose secrets, or make destructive system changes."
       },
       {
         "id": "hermes-kimi-k2.6",
@@ -690,6 +791,24 @@
         "autoInvoke": false,
         "contextTokens": 16384,
         "temperature": 0.1
+      },
+      {
+        "id": "colibri-glm52-local",
+        "type": "openai-compatible",
+        "model": "glm-5.2-colibri",
+        "telemetryModel": "glm-5.2-colibri",
+        "telemetryProvider": "colibri",
+        "label": "GLM-5.2 Colibri deep local",
+        "enabled": true,
+        "autoInvoke": false,
+        "endpoint": "http://127.0.0.1:1236/v1/chat/completions",
+        "contextTokens": 32768,
+        "maxInputTokens": 24000,
+        "maxOutputTokens": 2048,
+        "timeoutSeconds": 1800,
+        "maxPromptChars": 14000,
+        "maxAnswerWords": 1200,
+        "instructions": "Use only for explicit deep local reasoning or supervisor review. It is disk-streamed and slow; preserve concise context and do not put it on the automatic escalation ladder."
       }
     ]
   },
@@ -707,14 +826,30 @@
     "lm studio"
   ],
   "yieldVoiceboxBeforeLocalInference": true,
+  "sharedGpuLease": {
+    "enabled": true,
+    "bestEffort": true,
+    "label": "Hermes 65K gateway",
+    "command": "ssh",
+    "args": [
+      "-F",
+      "C:\\Users\\Richard\\.ssh\\config",
+      "openclaw-mac"
+    ],
+    "acquireRemoteCommand": "/Users/rich/.local/bin/hermes gateway stop",
+    "releaseRemoteCommand": "/Users/rich/.local/bin/hermes gateway start",
+    "timeoutSeconds": 45
+  },
   "allowedCommandPrefixes": [
     "npm install",
     "npm run typecheck",
     "npm run lint",
     "npm run test",
+    "npm test",
     "npm run build",
     "npm exec playwright -- test",
     "npx playwright test",
-    "node worker/smoke-test.mjs"
+    "node worker/smoke-test.mjs",
+    "node worker/tools/nextcloud-webdav.mjs"
   ]
 }

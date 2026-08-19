@@ -26,6 +26,20 @@ import {
   selectOperatorPlan
 } from "./lib/task-isolation.mjs";
 import { readTelemetry, recordInference } from "./lib/telemetry.mjs";
+import { streamJsonResponse } from "./lib/ollama-stream.mjs";
+import { evictOtherOllamaModels } from "./lib/ollama-runtime.mjs";
+import {
+  buildPreApprovalResearchPrompt,
+  parsePreApprovalResearch,
+  shouldRunPreApprovalResearch
+} from "./lib/pre-approval-research.mjs";
+import { collectWebResearch } from "./lib/research-agent.mjs";
+import {
+  classifyFailure,
+  initialEscalationIndex,
+  profileTaskDifficulty,
+  trajectoryPolicy
+} from "./lib/task-routing.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -36,6 +50,7 @@ const CONTROL_DIR = path.join(ROOT, ".worker-control");
 const PAUSE_FILE = path.join(CONTROL_DIR, "paused");
 const STOP_FILE = path.join(CONTROL_DIR, "stop");
 const WAKE_FILE = path.join(CONTROL_DIR, "wake");
+const LOOP_LOCK_PATH = path.join(CONTROL_DIR, "loop.lock");
 const LOG_DIR = path.join(__dirname, "logs");
 const DETAIL_LOG = path.join(LOG_DIR, "worker-detail.log");
 const PLANS_DIR = path.join(ROOT, "PLANS");
@@ -45,6 +60,7 @@ const ESCALATION_INBOX = path.join(ESCALATIONS_DIR, "inbox");
 const ESCALATION_PROCESSED = path.join(ESCALATIONS_DIR, "processed");
 const ESCALATION_LOCAL = path.join(ESCALATIONS_DIR, "local");
 const ESCALATION_FRONTIER = path.join(ESCALATIONS_DIR, "frontier");
+const ESCALATION_RESEARCH = path.join(ESCALATIONS_DIR, "research");
 const RUNTIME_DIR = path.join(__dirname, "runtime");
 
 const argv = new Set(process.argv.slice(2));
@@ -99,10 +115,11 @@ async function main() {
   if (argv.has("--smoke-edit")) return smokeEdit();
   if (argv.has("--benchmark")) return benchmarkModels();
   if (argv.has("--escalate")) return runLocalEscalation();
+  if (argv.has("--retry-local")) return retryLocalTask();
   if (argv.has("--once")) return runOnce();
   if (argv.has("--loop")) return runLoop();
 
-  console.log("Usage: node worker/qwen-worker.mjs --doctor|--status|--once|--loop|--smoke-edit|--benchmark|--escalate <TASK_ID> --channel <CHANNEL_ID>");
+  console.log("Usage: node worker/qwen-worker.mjs --doctor|--status|--once|--loop|--smoke-edit|--benchmark|--escalate <TASK_ID> --channel <CHANNEL_ID>|--retry-local <TASK_ID>");
 }
 
 async function readJson(filePath, fallback) {
@@ -129,6 +146,7 @@ function defaultState(config = {}) {
     currentTaskId: null,
     workerPid: null,
     lastError: null,
+    activity: null,
     benchmark: null,
     taskStates: {}
   };
@@ -188,6 +206,13 @@ async function log(message, extra = null) {
   const line = `[${new Date().toISOString()}] ${message}${extra ? ` ${JSON.stringify(extra)}` : ""}\n`;
   await appendFile(DETAIL_LOG, line);
   await appendFile(path.join(ROOT, "RUN_LOG.md"), `- ${line}`);
+}
+
+async function setActivity(state, taskId, phase, detail, extra = {}) {
+  const activity = { taskId, phase, detail, at: new Date().toISOString(), ...extra };
+  state.activity = activity;
+  if (taskId && state.taskStates?.[taskId]) state.taskStates[taskId].activity = activity;
+  await saveState(state);
 }
 
 async function readOptionalText(filePath, maxChars = 30000) {
@@ -387,10 +412,14 @@ async function ollamaGenerate(config, model, prompt, timeoutMs = 20 * 60 * 1000,
   const onProgress = telemetry.onProgress;
   delete telemetry.onProgress;
   try {
-    const res = await fetch(`${config.ollamaUrl}/api/generate`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
+    const evicted = await evictOtherOllamaModels(config.ollamaUrl, model);
+    if (evicted.length) {
+      await log(`Released foreign Ollama models before loading ${model}`, { evicted });
+    }
+    let responseText = "";
+    let finalData = {};
+    let lastProgressAt = 0;
+    await streamJsonResponse(`${config.ollamaUrl}/api/generate`, {
         model,
         prompt,
         stream: true,
@@ -403,43 +432,18 @@ async function ollamaGenerate(config, model, prompt, timeoutMs = 20 * 60 * 1000,
            temperature: config.temperature ?? 0.15,
           ...options
         }
-      }),
-      signal: controller.signal
-    });
-    if (!res.ok) throw new Error(`Ollama returned ${res.status}: ${await res.text()}`);
-    if (!res.body) throw new Error("Ollama returned no response body.");
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let responseText = "";
-    let finalData = {};
-    let lastProgressAt = 0;
-    for await (const chunk of res.body) {
-      if (existsSync(PAUSE_FILE)) {
-        controller.abort();
-        throw new Error("Operator paused the worker during local inference.");
-      }
-      buffer += decoder.decode(chunk, { stream: true });
-      const lines = buffer.split(/\r?\n/);
-      buffer = lines.pop() || "";
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        const data = JSON.parse(line);
+      }, {
+        signal: controller.signal,
+        onMessage: (data) => {
         if (data.error) throw new Error(`Ollama stream error: ${data.error}`);
         responseText += data.response || "";
         if (data.done) finalData = data;
+        if (onProgress && Date.now() - lastProgressAt >= 5000) {
+          lastProgressAt = Date.now();
+          void onProgress({ outputChars: responseText.length });
+        }
       }
-      if (onProgress && Date.now() - lastProgressAt >= 5000) {
-        lastProgressAt = Date.now();
-        await onProgress({ outputChars: responseText.length });
-      }
-    }
-    buffer += decoder.decode();
-    if (buffer.trim()) {
-      const data = JSON.parse(buffer);
-      if (data.error) throw new Error(`Ollama stream error: ${data.error}`);
-      responseText += data.response || "";
-      if (data.done) finalData = data;
-    }
+    });
     await recordInference(RUNTIME_DIR, {
       provider: "ollama",
       model,
@@ -490,6 +494,36 @@ async function unloadModel(config, model) {
   } catch {
     // Best effort only.
   }
+}
+
+async function setSharedGpuLease(config, action) {
+  const lease = config.sharedGpuLease;
+  if (!lease?.enabled) return false;
+  const remoteCommand = action === "acquire"
+    ? lease.acquireRemoteCommand
+    : lease.releaseRemoteCommand;
+  if (!lease.command || !Array.isArray(lease.args) || !remoteCommand) return false;
+
+  try {
+    await execText(
+      lease.command,
+      [...lease.args, remoteCommand],
+      (lease.timeoutSeconds || 45) * 1000
+    );
+  } catch (error) {
+    if (action === "acquire" && lease.bestEffort !== false) {
+      await log(`Shared GPU lease unavailable; continuing without remote runtime coordination`, {
+        label: lease.label || "external-runtime",
+        error: String(error?.message || error).slice(0, 1200)
+      });
+      return false;
+    }
+    throw error;
+  }
+  await log(`${action === "acquire" ? "Acquired" : "Released"} shared GPU lease`, {
+    owner: action === "acquire" ? "project-worker" : (lease.label || "external-runtime")
+  });
+  return true;
 }
 
 function assertAllowedCommand(command, config) {
@@ -566,8 +600,31 @@ async function assertEditTargetsClean(paths) {
 
 async function runValidation(commands, config) {
   const results = [];
+  const hasCanonicalTest = (commands || []).some((item) => String(item).trim() === "npm run test");
   for (const raw of commands || []) {
     const command = assertAllowedCommand(raw, config);
+    if (hasCanonicalTest && /^npm run test --\s+/i.test(command)) {
+      const result = {
+        command,
+        code: 0,
+        stdout: "Skipped a redundant test selector because the task validation already runs the canonical test suite.",
+        stderr: ""
+      };
+      results.push(result);
+      await log(`Skipped redundant test selector during validation: ${command}`);
+      continue;
+    }
+    if (command === "npm install" && config.skipNpmInstallIfPresent !== false && existsSync(path.join(ROOT, "node_modules"))) {
+      const result = {
+        command,
+        code: 0,
+        stdout: "Skipped npm install because node_modules is already present; dependency installation is not a model-task mutation.",
+        stderr: ""
+      };
+      results.push(result);
+      await log("Skipped npm install during validation because node_modules is present");
+      continue;
+    }
     await log(`Running validation command: ${command}`);
     const result = await runCommand(command);
     results.push(result);
@@ -654,7 +711,7 @@ async function commitTask(task, paths) {
   return message;
 }
 
-async function readOperatorContext(taskId) {
+async function readOperatorContext(taskId, taskState = null) {
   const escalationAnswer = await readOptionalText(path.join(ESCALATION_INBOX, `${taskId}.md`), 6000);
   const activePlan = await readOptionalText(path.join(PLANS_DIR, "ACTIVE_PLAN.md"), 5000);
   const taskPlan = await readOptionalText(path.join(PLANS_DIR, "TASKS", `${taskId}.md`), 5000);
@@ -666,7 +723,8 @@ async function readOperatorContext(taskId) {
     planSkippedReason: selectedPlan.skippedReason,
     testPatterns: await readOptionalText(path.join(PLANS_DIR, "TEST_PATTERNS.md"), 3000),
     guardrails: await readOptionalText(path.join(PLANS_DIR, "GUARDRAILS.md"), 3000),
-    escalationAnswer
+    escalationAnswer,
+    preApprovalResearch: taskState?.preApprovalResearch || ""
   };
 }
 
@@ -766,17 +824,27 @@ function findEscalationIndex(ladder, channelId) {
   return ladder.findIndex((channel) => channelMatches(channel, channelId));
 }
 
-function selectEscalationChannel(config, taskState) {
+function selectEscalationChannel(config, taskState, task = null) {
   const ladder = escalationLadder(config);
   if (!ladder.length) return { channel: null, index: -1, ladder };
 
-  let index = 0;
+  let index = initialEscalationIndex(ladder, {
+    failureClass: taskState.lastFailureClass,
+    difficulty: taskState.difficulty || (task ? profileTaskDifficulty(task).level : "standard")
+  });
   if (taskState.escalationAnswerChannel) {
     const answeredIndex = findEscalationIndex(ladder, taskState.escalationAnswerChannel);
-    index = answeredIndex >= 0 ? answeredIndex + 1 : (Number.isInteger(taskState.escalationLadderIndex) ? taskState.escalationLadderIndex + 1 : 0);
+    const currentIndex = taskState.escalationChannel
+      ? findEscalationIndex(ladder, taskState.escalationChannel)
+      : -1;
+    index = currentIndex > answeredIndex
+      ? currentIndex + 1
+      : answeredIndex >= 0
+        ? answeredIndex + 1
+        : (Number.isInteger(taskState.escalationLadderIndex) ? taskState.escalationLadderIndex + 1 : 0);
   } else if (taskState.escalationChannel) {
     const activeIndex = findEscalationIndex(ladder, taskState.escalationChannel);
-    index = activeIndex >= 0 ? activeIndex : 0;
+    index = activeIndex >= 0 ? activeIndex + (taskState.preApprovalRetryCount ? 1 : 0) : 0;
   } else if (Number.isInteger(taskState.escalationLadderIndex)) {
     index = taskState.escalationLadderIndex;
   }
@@ -851,7 +919,10 @@ ${answer}
   if (!answerPath) await fs.writeFile(finalPath, body, "utf8");
 
   taskState.status = "pending";
-  taskState.repairCycles = 0;
+  const hasPriorFailure = Boolean(taskState.lastError || taskState.retryContext);
+  taskState.repairCycles = hasPriorFailure ? 1 : 0;
+  taskState.trajectoryAttempts = 0;
+  taskState.runtimeRetries = 0;
   taskState.escalationAnswer = effectiveEscalationGuidance(body).slice(0, 20000);
   taskState.escalationAnswerChannel = channel.id;
   taskState.escalationAnswerPath = finalPath;
@@ -951,6 +1022,119 @@ async function autoInvokeAwaitingEscalations(tasks, state, config) {
   return invoked;
 }
 
+async function runPreApprovalResearch(tasks, state, config) {
+  const policy = config.escalation?.preApprovalResearch || {};
+  if (policy.enabled !== true) return 0;
+  let researched = 0;
+  const ladder = escalationLadder(config);
+
+  for (const task of tasks) {
+    const taskState = state.taskStates[task.id];
+    if (!taskState || taskState.status !== "awaiting_escalation") continue;
+    const channel = ladder.find((item) => channelMatches(item, taskState.escalationChannel));
+    if (!shouldRunPreApprovalResearch(taskState, channel, config)) continue;
+
+    const model = policy.model || config.routing?.utilityModel || state.primaryModel;
+    taskState.preApprovalResearchAttempts = (taskState.preApprovalResearchAttempts || 0) + 1;
+    if (taskState.preApprovalResearchChannel !== channel.id) {
+      taskState.preApprovalResearchAttempts = 1;
+      taskState.preApprovalResearchChannel = channel.id;
+    }
+    taskState.activity = {
+      taskId: task.id,
+      phase: "context-recovery",
+      detail: `Local ${model} is testing one recovery hypothesis before ${channel.id} approval`,
+      at: new Date().toISOString()
+    };
+    state.activity = taskState.activity;
+    state.currentTaskId = task.id;
+    state.status = "pre_approval_research";
+    state.lastError = null;
+    await saveState(state);
+
+    let sharedGpuLease = false;
+    try {
+      sharedGpuLease = await setSharedGpuLease(config, "acquire");
+      await evictOtherOllamaModels(config.ollamaUrl, model);
+      const tree = await listTree();
+      const focusFiles = await readFocusFiles(task);
+      const operatorContext = await readOperatorContext(task.id, taskState);
+      const webResearch = await collectWebResearch({ task, taskState, config });
+      const prompt = buildPreApprovalResearchPrompt({ task, taskState, tree, focusFiles, operatorContext, webResearch });
+      const raw = await ollamaGenerate(config, model, prompt, 10 * 60 * 1000, {
+        jsonMode: true,
+        num_ctx: policy.contextTokens || 8192,
+        temperature: policy.temperature ?? 0.1,
+        telemetry: { agent: "local-context-recovery", phase: "context-recovery", taskId: task.id }
+      });
+      const research = parsePreApprovalResearch(raw);
+      const createdAt = new Date().toISOString();
+      const researchPath = path.join(ESCALATION_RESEARCH, `${createdAt.replace(/[:.]/g, "-")}-${task.id}.md`);
+      const body = `# Local Context Recovery: ${task.id}\n\nCreated: ${createdAt}\nModel: ${model}\nRequested route: ${channel.id}\n\n## Diagnosis\n\n${research.diagnosis}\n\n## Context Delta\n\n${research.contextDelta}\n\n## Next Action\n\n${research.nextAction}\n\n## Evidence\n\n${research.evidence.map((item) => `- ${item}`).join("\\n") || "- none reported"}\n\n## Web Research Handoff\n\nQuery: ${webResearch.query || "(none)"}\n${webResearch.results?.map((item) => `- ${item.title}: ${item.url}`).join("\\n") || (webResearch.error ? `- ${webResearch.error}` : "- none available")}\n`;
+      await fs.mkdir(ESCALATION_RESEARCH, { recursive: true });
+      await fs.writeFile(researchPath, body, "utf8");
+      taskState.preApprovalResearch = body.slice(0, 8000);
+      taskState.preApprovalResearchPath = researchPath;
+      taskState.preApprovalResearchStatus = research.retryWorthwhile ? "ready-for-local-retry" : "context-added";
+      taskState.preApprovalRetryCount = (taskState.preApprovalRetryCount || 0) + (research.retryWorthwhile ? 1 : 0);
+      appendEscalationHistory(taskState, {
+        event: "context-recovery",
+        channelId: channel.id,
+        model,
+        researchPath,
+        retryQueued: research.retryWorthwhile
+      });
+      if (research.retryWorthwhile) {
+        taskState.status = "pending";
+        state.status = "repair_wait";
+        state.lastError = `Local context recovery found a retry path; retrying ${task.id} without approval.`;
+      } else {
+        taskState.status = "awaiting_escalation";
+        state.status = "awaiting_escalation";
+        state.lastError = `Local context recovery found no verified retry path; approval is now available for ${task.id}.`;
+      }
+      state.currentTaskId = null;
+      state.activity = null;
+      delete taskState.lease;
+      await createEscalationRequest(task, state, taskState, config, channel, ladder);
+      await saveState(state);
+      await log(`Completed local context recovery for ${task.id}`, {
+        model,
+        researchPath,
+        retryQueued: research.retryWorthwhile
+      });
+      researched += 1;
+    } catch (error) {
+      taskState.preApprovalResearchStatus = "failed";
+      taskState.preApprovalResearchError = String(error.stack || error.message || error).slice(0, 4000);
+      taskState.status = "awaiting_escalation";
+      state.currentTaskId = null;
+      state.activity = null;
+      state.status = "awaiting_escalation";
+      state.lastError = `Local context recovery failed for ${task.id}; approval is available.`;
+      appendEscalationHistory(taskState, {
+        event: "context-recovery-failed",
+        channelId: channel.id,
+        error: taskState.preApprovalResearchError
+      });
+      await saveState(state);
+      await log(`Pre-approval research failed for ${task.id}`, { error: taskState.preApprovalResearchError });
+    } finally {
+      await unloadModel(config, model);
+      if (sharedGpuLease) {
+        try {
+          await setSharedGpuLease(config, "release");
+        } catch (error) {
+          await log(`Failed to restore ${config.sharedGpuLease?.label || "shared GPU runtime"} after local context recovery`, {
+            error: String(error.stack || error.message || error).slice(0, 2000)
+          });
+        }
+      }
+    }
+  }
+  return researched;
+}
+
 function buildTaskPrompt(task, state, tree, focusFiles, operatorContext) {
   const taskState = state.taskStates[task.id] || {};
   const lastError = taskState.lastError ? `\nPrevious failure to repair:\n${taskState.lastError}\n` : "";
@@ -975,8 +1159,18 @@ ${operatorContext.testPatterns || "(none provided)"}
 Operator extra guardrails:
 ${operatorContext.guardrails || "(none provided)"}
 
+Workspace files already changed outside this attempt:
+${operatorContext.workspaceDirtyPaths?.length ? operatorContext.workspaceDirtyPaths.map((item) => `- ${item}`).join("\n") : "(none detected)"}
+Do not edit or replace any listed dirty file. Preserve those changes. If the task needs documentation, add a new scoped document or edit a clean file instead.
+
 Escalation guidance from frontier/local reviewer:
 ${escalationGuidance || "(none provided)"}
+
+Repair context from the previous local attempt:
+${taskState.retryContext || "(none provided)"}
+
+Local context recovery performed before this approval:
+${operatorContext.preApprovalResearch || "(none provided)"}
 
 Current task:
 ${JSON.stringify(task, null, 2)}
@@ -1011,7 +1205,7 @@ Use exactly one edit mode per path: replacements for an existing file, or conten
 async function createEscalationRequest(task, state, taskState, config, channel, ladder = []) {
   await fs.mkdir(ESCALATION_OUTBOX, { recursive: true });
   const diffSummary = await gitDiffSummary();
-  const operatorContext = await readOperatorContext(task.id);
+  const operatorContext = await readOperatorContext(task.id, taskState);
   const createdAt = new Date().toISOString();
   const safeStamp = createdAt.replace(/[:.]/g, "-");
   const latestPath = path.join(ESCALATION_OUTBOX, `${task.id}.md`);
@@ -1093,6 +1287,12 @@ ${compactText(taskState.lastError || "", Math.min(4000, Math.floor(packetLimit *
 ${historyText}
 \`\`\`
 
+## Local Research Before Approval
+
+\`\`\`markdown
+${compactText(operatorContext.preApprovalResearch || "(none performed yet)", Math.min(5000, Math.floor(packetLimit * 0.24)), "local context recovery")}
+\`\`\`
+
 ## Git Status
 
 \`\`\`text
@@ -1133,7 +1333,7 @@ Return concise reviewer guidance only. Do not emit JSON edits. Focus on how the 
   return { answer, answerPath: localPath };
 }
 
-async function invokeCodexEscalation(config, task, channel, requestPath) {
+async function invokeCodexEscalation(config, task, channel, requestPath, { manualOverride = false } = {}) {
   const budget = config.escalation?.frontierBudget || {};
   const promptLimit = Math.min(
     channel.maxPromptChars || Number.POSITIVE_INFINITY,
@@ -1151,7 +1351,7 @@ async function invokeCodexEscalation(config, task, channel, requestPath) {
   await fs.mkdir(ESCALATION_FRONTIER, { recursive: true });
   const outputPath = path.join(ESCALATION_FRONTIER, `${new Date().toISOString().replace(/[:.]/g, "-")}-${task.id}-${channel.id}.md`);
   const telemetry = await readTelemetry(RUNTIME_DIR, 500);
-  assertFrontierBudget({ channel, promptChars: prompt.length, taskId: task.id, telemetry, config });
+  assertFrontierBudget({ channel, promptChars: prompt.length, taskId: task.id, telemetry, config, manualOverride });
   const args = [
     "exec",
     "-m", channel.model,
@@ -1424,9 +1624,10 @@ Rules:
   const args = [
     "-o", "BatchMode=yes",
     "-o", "ConnectTimeout=8",
-    channel.sshHost || "openclaw-mac",
-    remoteCommand
   ];
+  const sshConfig = channel.sshConfig || config.escalation?.sshConfig;
+  if (sshConfig) args.push("-F", expandPathTemplate(sshConfig));
+  args.push(channel.sshHost || "openclaw-mac", remoteCommand);
 
   const startedAt = Date.now();
   const result = await execWithInput(command, args, "", (channel.timeoutSeconds || 900) * 1000);
@@ -1455,10 +1656,10 @@ Rules:
   return { answer, answerPath: outputPath };
 }
 
-async function invokeEscalationChannel(config, task, channel, requestPath) {
+async function invokeEscalationChannel(config, task, channel, requestPath, options = {}) {
   if (channel.type === "ollama") return invokeOllamaEscalation(config, task, channel, requestPath);
   if (channel.type === "hermes") return invokeHermesEscalation(config, task, channel, requestPath);
-  if (channel.type === "codex") return invokeCodexEscalation(config, task, channel, requestPath);
+  if (channel.type === "codex") return invokeCodexEscalation(config, task, channel, requestPath, options);
   if (channel.type === "antigravity") return invokeAntigravityEscalation(config, task, channel, requestPath);
   if (channel.type === "openai-compatible") return invokeOpenAICompatibleEscalation(config, task, channel, requestPath);
   if (channel.type === "copilot-cli") return invokeCopilotEscalation(config, task, channel, requestPath);
@@ -1466,7 +1667,7 @@ async function invokeEscalationChannel(config, task, channel, requestPath) {
 }
 
 async function requestEscalation(task, state, taskState, config, reason) {
-  const selected = selectEscalationChannel(config, taskState);
+  const selected = selectEscalationChannel(config, taskState, task);
   const channel = selected.channel;
   if (!channel) {
     taskState.status = "blocked";
@@ -1489,6 +1690,16 @@ async function requestEscalation(task, state, taskState, config, reason) {
   state.status = "awaiting_escalation";
   state.currentTaskId = null;
   state.lastError = `Awaiting escalation answer for ${task.id} via ${channel.id}.`;
+  taskState.activity = {
+    taskId: task.id,
+    phase: "awaiting-approval",
+    detail: channel.autoInvoke === true
+      ? `Waiting for ${channel.id} to return guidance`
+      : `Approval available: send the task packet to ${channel.id} for an unblock attempt`,
+    at: new Date().toISOString(),
+    channelId: channel.id
+  };
+  state.activity = taskState.activity;
   appendEscalationHistory(taskState, { event: "requested", channelId: channel.id, requestPath: request.latestPath, reason });
 
   if (channel.autoInvoke === true) {
@@ -1548,7 +1759,7 @@ async function runLocalEscalation() {
     await fs.writeFile(requestPath, request, "utf8");
   }
 
-  const result = await invokeEscalationChannel(config, task, channel, requestPath);
+  const result = await invokeEscalationChannel(config, task, channel, requestPath, { manualOverride: true });
   if (!result?.answer) throw new Error(`Channel ${channel.id} is manual-only; open ${requestPath} and save an answer into ESCALATIONS/inbox/${taskId}.md.`);
 
   await fs.mkdir(ESCALATION_INBOX, { recursive: true });
@@ -1567,10 +1778,53 @@ ${result.answer}
   console.log(JSON.stringify({ ok: true, taskId, channel: channel.id, model: channel.model || channel.type, inboxPath, answerPath: result.answerPath }, null, 2));
 }
 
+async function retryLocalTask() {
+  const flag = process.argv.indexOf("--retry-local");
+  const taskId = flag >= 0 ? process.argv[flag + 1] : null;
+  if (!taskId || taskId.startsWith("--")) throw new Error("Use --retry-local <TASK_ID>.");
+  const config = await loadConfig();
+  const state = await loadState(config);
+  const tasks = await extractTasks();
+  const task = tasks.find((item) => item.id === taskId);
+  if (!task) throw new Error(`Unknown task: ${taskId}`);
+  const taskState = state.taskStates[taskId];
+  if (!taskState?.escalationAnswer) {
+    throw new Error(`Task ${taskId} has no saved escalation guidance to consume.`);
+  }
+  const hasPriorFailure = Boolean(taskState.lastError || taskState.retryContext);
+  if (taskState.lastError) taskState.retryContext = String(taskState.lastError).slice(0, 6000);
+  taskState.status = "pending";
+  taskState.repairCycles = hasPriorFailure ? 1 : 0;
+  taskState.trajectoryAttempts = 0;
+  taskState.runtimeRetries = 0;
+  taskState.lastError = null;
+  taskState.preApprovalResearchStatus = "queued-for-local-retry";
+  delete taskState.lease;
+  delete taskState.escalationAutoInvokeError;
+  appendEscalationHistory(taskState, {
+    event: "manual-local-retry",
+    channelId: taskState.escalationAnswerChannel || taskState.escalationChannel,
+    answerPath: taskState.escalationAnswerPath
+  });
+  state.status = "repair_wait";
+  state.currentTaskId = null;
+  state.activity = null;
+  state.lastError = `Queued ${taskId} for a local retry with saved escalation guidance.`;
+  await fs.mkdir(CONTROL_DIR, { recursive: true });
+  await fs.writeFile(WAKE_FILE, `retry-local ${taskId} ${new Date().toISOString()}\n`, "utf8");
+  await saveState(state);
+  console.log(`Queued ${taskId} for a local retry with saved escalation guidance.`);
+}
+
 async function processTask(task, config, state) {
   const taskState = state.taskStates[task.id] || { status: "pending", attempts: 0, repairCycles: 0 };
   taskState.status = "running";
   taskState.attempts = (taskState.attempts || 0) + 1;
+  taskState.trajectoryAttempts = (taskState.trajectoryAttempts || 0) + 1;
+  const difficulty = profileTaskDifficulty(task);
+  taskState.difficulty = difficulty.level;
+  taskState.difficultyScore = difficulty.score;
+  taskState.routingReason = difficulty.reasons.join("; ") || "bounded single-module task";
   taskState.startedAt = taskState.startedAt || new Date().toISOString();
   state.currentTaskId = task.id;
   state.status = "running";
@@ -1587,13 +1841,21 @@ async function processTask(task, config, state) {
   const model = taskState.repairCycles > 0
     ? (config.routing?.repairModel || state.fallbackModel)
     : (config.routing?.implementerModel || state.primaryModel);
+  await setActivity(state, task.id, "local-implementation", `Local ${model} is preparing a bounded proposal`, { model });
   await log(`Starting task ${task.id} with ${model}`);
 
   let editBackups = [];
+  let sharedGpuLease = false;
   try {
+    sharedGpuLease = await setSharedGpuLease(config, "acquire");
     const tree = await listTree();
     const focusFiles = await readFocusFiles(task);
-    const operatorContext = await readOperatorContext(task.id);
+    const operatorContext = await readOperatorContext(task.id, taskState);
+    operatorContext.workspaceDirtyPaths = (await execText("git", ["status", "--porcelain", "--untracked-files=all"], 30000))
+      .split(/\r?\n/)
+      .map((line) => line.trim().replace(/^..\s+/, ""))
+      .filter(Boolean)
+      .slice(0, 80);
     taskState.operatorPlanSource = operatorContext.planSource;
     taskState.operatorPlanScope = operatorContext.planScope;
     taskState.operatorPlanSkippedReason = operatorContext.planSkippedReason;
@@ -1621,12 +1883,14 @@ async function processTask(task, config, state) {
 
     const modelCommands = proposal.commands;
     const commands = [...modelCommands, ...(task.validation || [])];
+    await setActivity(state, task.id, "validation", `Running ${commands.length} validation command(s)`, { model });
     const validation = await runValidation([...new Set(commands)], config);
     if (!validation.ok) {
       throw new Error(`Validation failed: ${JSON.stringify(validation.results.at(-1), null, 2)}`);
     }
 
     const diffSummary = await gitDiffSummary(commitPaths);
+    await setActivity(state, task.id, "review", "Local reviewer is checking acceptance evidence", { model });
     const review = await reviewDiff(config, task, diffSummary);
     if (!review.pass) throw new Error(`Diff review failed: ${review.notes}`);
 
@@ -1636,10 +1900,12 @@ async function processTask(task, config, state) {
     taskState.lastError = null;
     taskState.commit = commit;
     taskState.review = review;
+    delete taskState.retryContext;
     state.currentTaskId = null;
     state.status = "idle";
     state.workerPid = process.pid;
     state.lastError = null;
+    state.activity = null;
     delete taskState.lease;
     await saveState(state);
     await log(`Completed task ${task.id}`, { commit, review });
@@ -1661,17 +1927,63 @@ async function processTask(task, config, state) {
       return;
     }
     taskState.status = "pending";
-    taskState.repairCycles = (taskState.repairCycles || 0) + 1;
     taskState.lastError = String(error.stack || error.message || error).slice(0, 8000);
+    taskState.retryContext = taskState.lastError.slice(0, 6000);
+    taskState.lastFailureClass = classifyFailure(error);
+    const policy = trajectoryPolicy(config, taskState);
+    if (taskState.lastFailureClass === "runtime") {
+      taskState.runtimeRetries = (taskState.runtimeRetries || 0) + 1;
+      taskState.trajectoryAttempts = Math.max(0, (taskState.trajectoryAttempts || 1) - 1);
+      state.lastError = taskState.lastError;
+      state.currentTaskId = null;
+      state.workerPid = process.pid;
+      taskState.activity = {
+        taskId: task.id,
+        phase: "repair-wait",
+        detail: `Local runtime retry ${taskState.runtimeRetries} is queued`,
+        at: new Date().toISOString()
+      };
+      state.activity = taskState.activity;
+      delete taskState.lease;
+      if (taskState.runtimeRetries <= policy.maxRuntimeRetries) {
+        state.status = "repair_wait";
+        await saveState(state);
+        await log(`Task ${task.id} runtime retry scheduled without escalation`, {
+          runtimeRetries: taskState.runtimeRetries,
+          maxRuntimeRetries: policy.maxRuntimeRetries,
+          error: taskState.lastError
+        });
+        return;
+      }
+      taskState.status = "blocked";
+      taskState.blockedAt = new Date().toISOString();
+      state.status = "blocked";
+      state.lastError = `Local runtime unavailable for ${task.id}; model reasoning escalation was skipped.`;
+      await saveState(state);
+      await log(`Task ${task.id} blocked on local runtime health`, { error: taskState.lastError });
+      return;
+    }
+    taskState.runtimeRetries = 0;
+    taskState.repairCycles = (taskState.repairCycles || 0) + 1;
     const fingerprint = recordFailureFingerprint(taskState, taskState.lastError);
     state.lastError = taskState.lastError;
     state.currentTaskId = null;
     state.workerPid = process.pid;
+    taskState.activity = {
+      taskId: task.id,
+      phase: "repair-wait",
+      detail: "Local proposal failed validation; a bounded repair pass is queued",
+      at: new Date().toISOString()
+    };
+    state.activity = taskState.activity;
     delete taskState.lease;
 
     const repeatedFailureLimit = config.escalation?.maxRepeatedFailureFingerprint || 2;
     const repeatedFailure = repeatedFailureLimit > 0 && fingerprint.count >= repeatedFailureLimit;
-    const exhaustedRepairCycles = taskState.repairCycles >= (state.maxRepairCycles || 2);
+    const allowedAttempts = taskState.escalationAnswerChannel
+      ? policy.maxPostGuidanceAttempts
+      : policy.maxLocalAttempts;
+    const exhaustedRepairCycles = taskState.trajectoryAttempts >= allowedAttempts;
 
     if (repeatedFailure || exhaustedRepairCycles) {
       if (config.escalation?.enabled) {
@@ -1696,6 +2008,15 @@ async function processTask(task, config, state) {
     await saveState(state);
   } finally {
     await unloadModel(config, model);
+    if (sharedGpuLease) {
+      try {
+        await setSharedGpuLease(config, "release");
+      } catch (error) {
+        await log(`Failed to restore ${config.sharedGpuLease?.label || "shared GPU runtime"}`, {
+          error: String(error.stack || error.message || error).slice(0, 2000)
+        });
+      }
+    }
   }
 }
 
@@ -1756,9 +2077,13 @@ async function runOnce() {
   const tasks = await extractTasks();
   const consumedAnswers = await consumeEscalationAnswers(tasks, state, config);
   const normalizedEscalations = await normalizeBlockedTasksToEscalations(tasks, state, config);
+  const preApprovalResearch = await runPreApprovalResearch(tasks, state, config);
   const autoInvokedEscalations = await autoInvokeAwaitingEscalations(tasks, state, config);
-  if (consumedAnswers || normalizedEscalations || autoInvokedEscalations) {
+  if (consumedAnswers || normalizedEscalations || preApprovalResearch || autoInvokedEscalations) {
     await saveState(state);
+  }
+  if (preApprovalResearch) {
+      console.log("Local context recovery completed. The task will retry locally when a verified retry path exists; otherwise approval remains available.");
   }
   if (autoInvokedEscalations) {
     console.log("Escalation answer captured. The next loop iteration will resume local work.");
@@ -1821,6 +2146,27 @@ async function responsiveSleep(totalMs) {
 }
 
 async function runLoop() {
+  await fs.mkdir(CONTROL_DIR, { recursive: true });
+  let lock;
+  try {
+    lock = await fs.open(LOOP_LOCK_PATH, "wx");
+    await lock.writeFile(`${process.pid}\n`, "utf8");
+  } catch (error) {
+    if (error.code === "EEXIST") {
+      const existingPid = Number((await fs.readFile(LOOP_LOCK_PATH, "utf8").catch(() => "")).trim());
+      if (processIsAlive(existingPid)) {
+        console.log(`Worker loop already owned by process ${existingPid}.`);
+        return;
+      }
+      await fs.rm(LOOP_LOCK_PATH, { force: true });
+      lock = await fs.open(LOOP_LOCK_PATH, "wx");
+      await lock.writeFile(`${process.pid}\n`, "utf8");
+    } else {
+      throw error;
+    }
+  }
+
+  try {
   const config = await loadConfig();
   await log("Worker loop started", { host: os.hostname(), pid: process.pid });
   while (true) {
@@ -1837,6 +2183,10 @@ async function runLoop() {
         : config.idleSleepSeconds;
     if (state.status === "stopped") break;
     await responsiveSleep((wait || 120) * 1000);
+  }
+  } finally {
+    await lock?.close().catch(() => {});
+    await fs.rm(LOOP_LOCK_PATH, { force: true });
   }
 }
 

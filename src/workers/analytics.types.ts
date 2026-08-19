@@ -1,5 +1,6 @@
 import type { StructuredAnalysisPlan } from '../lib/analysis-plan-schema';
 import type { AnalysisResult } from '../lib/deterministic-analysis';
+import type { UploadedDataset } from '../lib/upload';
 
 export type AnalyticsErrorCode =
   | 'INITIALIZATION_FAILED'
@@ -29,6 +30,7 @@ export interface LoadDatasetRequest {
   type: 'load-dataset';
   requestId: string;
   datasetUrl?: string;
+  uploadedDataset?: UploadedDataset;
 }
 
 export interface InspectSchemaRequest {

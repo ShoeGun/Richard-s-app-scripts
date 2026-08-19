@@ -41,13 +41,17 @@ jobs:
       - name: Test
         run: npm run test
 
-      - name: Build
-        run: npm run build
-        env:
-          GITHUB_PAGES_BASE: /
-
       - name: Setup Pages
+        id: pages
         uses: actions/configure-pages@v5
+
+      - name: Copy original portfolio into Pages artifact
+        run: npm run build:pages
+
+      - name: Build browser agent
+        run: npm run build:agent
+        env:
+          VITE_BASE_PATH: ${{ steps.pages.outputs.base_path }}agent/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

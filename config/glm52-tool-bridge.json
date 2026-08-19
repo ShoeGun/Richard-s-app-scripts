@@ -1,0 +1,61 @@
+{
+  "model": {
+    "provider": "colibri",
+    "model": "glm-5.2-colibri",
+    "endpoint": "http://127.0.0.1:1236/v1",
+    "role": "planner-and-reviewer"
+  },
+  "toolBroker": {
+    "runtime": "openclaw-mac",
+    "harness": "hermes",
+    "gateway": "ws://127.0.0.1:18789",
+    "localEntrypoint": "node worker/tools/glm52-mcp-broker.mjs",
+    "allowedOperations": [
+      "comfyui.status",
+      "comfyui.start",
+      "comfyui.yield-start",
+      "comfyui.stop",
+      "comfyui.queue",
+      "gpu.reserve",
+      "gpu.start",
+      "gpu.complete",
+      "gpu.release",
+      "unreal.status",
+      "unreal.mcp"
+    ],
+    "transport": "reverse-ssh-loopback",
+    "policy": "GLM proposes; the broker validates, leases, executes, and records tool results"
+  },
+  "mcpServers": {
+    "unreal": {
+      "enabled": true,
+      "endpoint": "http://127.0.0.1:8000/mcp",
+      "healthEndpoint": "http://127.0.0.1:30010",
+      "healthPath": "/remote/info",
+      "requires": "Unreal Editor with the project Remote Control plugin enabled and the loopback MCP bridge running"
+    },
+    "comfyui": {
+      "enabled": false,
+      "endpoint": "http://127.0.0.1:8188",
+      "healthPath": "/system_stats",
+      "rootEnv": "COMFYUI_ROOT",
+      "startCommandEnv": "COMFYUI_START_COMMAND",
+      "stopCommandEnv": "COMFYUI_STOP_COMMAND",
+      "requires": "GPU lease before start; release lease after idle timeout"
+    },
+    "silverbullet": {
+      "enabled": true,
+      "transport": "read-only-context-adapter",
+      "requires": "configured silverbullet-memory skill on openclaw-mac",
+      "scope": "durable project facts, runbooks, architecture, and compact task handoffs",
+      "policy": "search before answering; read only; never store credentials or private raw data",
+      "agentInstruction": "Before guessing about project facts, procedures, or recent decisions, consult SilverBullet through the read-only memory skill. Treat repository files and runtime health as the execution source of truth."
+    }
+  },
+  "execution": {
+    "serialToolCalls": true,
+    "requireHealthBeforeUse": true,
+    "requireArtifactAfterUse": true,
+    "neverExposeToPortfolioVisitors": true
+  }
+}

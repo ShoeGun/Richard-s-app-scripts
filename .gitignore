@@ -2,6 +2,7 @@ node_modules/
 dist/
 coverage/
 .vite/
+.playwright-cli/
 .worker-control/
 worker/logs/
 worker/runtime/
@@ -13,6 +14,10 @@ ESCALATIONS/processed/
 ESCALATIONS/local/
 ESCALATIONS/frontier/
 *.log
+.dom-workbench/
+training/runs/
+training/checkpoints/
+training/exports/
 .env
 .env.*
 !.env.example

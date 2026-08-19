@@ -25,6 +25,20 @@ describe('parseModelPlan', () => {
     });
   });
 
+  it('normalizes common small-model vocabulary before validation', () => {
+    expect(parseModelPlan(JSON.stringify({
+      groupBy: 'category',
+      filters: [{ field: 'year', operator: 'equals', value: 2025 }],
+      sort: [{ field: 'category', direction: 'descending' }],
+      chart: { type: 'column', x: 'category', y: 'projects' }
+    }))).toEqual({
+      groupBy: ['category'],
+      filters: [{ field: 'year', operator: 'eq', value: 2025 }],
+      sort: [{ field: 'category', direction: 'desc' }],
+      chart: { type: 'bar', x: 'category', y: 'projects' }
+    });
+  });
+
   it('rejects malformed model output with a safe error', () => {
     expect(() => parseModelPlan('Try grouping by category.')).toThrow(ModelPlanError);
   });

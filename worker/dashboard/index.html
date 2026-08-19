@@ -2,9 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="edgeops-browser-session" content="__EDGEOPS_BROWSER_SESSION__" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <title>EdgeOps Control Plane</title>
+    <link rel="icon" href="data:," />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -14,9 +16,9 @@
         <h1>EdgeOps Control Plane</h1>
       </div>
       <div class="topbar-actions" role="group" aria-label="Worker controls">
-        <button class="control secondary" data-action="pause" title="Pause worker">Ⅱ <span>Pause</span></button>
-        <button class="control secondary" data-action="stop" title="Stop worker">■ <span>Stop</span></button>
-        <button class="control primary" data-action="resume" title="Resume worker">▶ <span>Resume</span></button>
+        <button class="control secondary" data-action="pause" title="Pause worker"><span>Pause</span></button>
+        <button class="control secondary" data-action="stop" title="Stop worker"><span>Stop</span></button>
+        <button class="control primary" data-action="resume" title="Resume worker"><span>Resume</span></button>
       </div>
     </header>
 
@@ -43,15 +45,47 @@
           <strong id="last-sync">Never</strong>
         </div>
       </section>
+      <section id="attention-banner" class="attention-banner" aria-live="polite" hidden>
+        <div>
+          <span class="label">NEEDS ATTENTION</span>
+          <strong id="attention-summary">No blockers</strong>
+          <span id="attention-detail"></span>
+        </div>
+        <button class="control secondary compact" id="review-blockers">Review tasks</button>
+      </section>
 
       <nav class="tabs" aria-label="Control plane views">
         <button class="tab active" data-view="overview">Overview</button>
         <button class="tab" data-view="tasks">Task graph</button>
         <button class="tab" data-view="telemetry">Telemetry</button>
+        <button class="tab" data-view="connections">Connections</button>
+        <button class="tab" data-view="voice">Voice services</button>
         <button class="tab" data-view="operator">Operator context</button>
+        <button class="tab" data-view="paperclip">Paperclip</button>
+        <button class="tab" data-view="silverbullet">SilverBullet galaxy</button>
       </nav>
 
       <section class="view active" id="view-overview">
+        <section class="panel goal-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">PRIMARY GOAL</p>
+              <h2 id="goal-title">Browser-native local AI analytics portfolio</h2>
+            </div>
+            <strong id="goal-progress">0%</strong>
+          </div>
+          <div class="goal-body">
+            <p id="goal-objective" class="goal-objective"></p>
+            <div class="goal-metrics">
+              <div><span>Completed</span><strong id="goal-completed">0 / 0</strong></div>
+              <div><span>Loop tokens</span><strong id="goal-tokens">0</strong></div>
+              <div><span>GPT tokens</span><strong id="goal-frontier-tokens">0</strong></div>
+              <div><span>Current milestone</span><strong id="goal-milestone">None</strong></div>
+            </div>
+            <div class="goal-progress-track" aria-hidden="true"><i id="goal-progress-bar"></i></div>
+          </div>
+        </section>
+
         <div class="overview-grid">
           <section class="panel flow-panel">
             <div class="panel-heading">
@@ -59,7 +93,7 @@
                 <p class="eyebrow">EXECUTION PATH</p>
                 <h2>Local-first routing</h2>
               </div>
-              <button class="icon-button" id="sync-button" title="Sync Paperclip" aria-label="Sync Paperclip">↻</button>
+              <button class="icon-button" id="sync-button" title="Sync Paperclip" aria-label="Sync Paperclip">Sync</button>
             </div>
             <div id="routing-flow" class="routing-flow"></div>
           </section>
@@ -73,6 +107,17 @@
               <span class="live-mark"><i></i> live</span>
             </div>
             <div id="service-list" class="service-list"></div>
+            <div class="runtime-actions" aria-label="GPU runtime controls">
+              <div>
+                <strong>ComfyUI GPU runtime</strong>
+                <span>Delegates to the canonical creative manager on port 3220. The first action protects active tools; the second creates a one-hour managed handoff and restores captured producers after verified idle.</span>
+              </div>
+              <div class="runtime-action-buttons">
+                <button class="control primary compact" data-action="start-comfyui" title="Wait briefly for the GPU, then launch ComfyUI">Launch ComfyUI</button>
+                <button class="control danger compact" data-action="yield-gpu-start-comfyui" data-confirm="Make room through the canonical resource manager? Exact registered producers and model runtimes may be paused; active registered inference may be preempted, then captured resources are restored after the Comfy session releases." title="Create a managed one-hour creative handoff and launch ComfyUI">Make room + launch</button>
+                <a class="control compact" href="http://127.0.0.1:3220/" target="_blank" rel="noreferrer">Open creative manager</a>
+              </div>
+            </div>
           </section>
         </div>
 
@@ -111,7 +156,7 @@
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>Task</th><th>Status</th><th>Depends on</th><th>Attempts</th><th>Tokens</th><th>Escalation</th></tr>
+                <tr><th>Task</th><th>Status</th><th>Depends on</th><th>Attempts</th><th>Tokens</th><th>Escalation</th><th>Action</th></tr>
               </thead>
               <tbody id="task-table"></tbody>
             </table>
@@ -136,10 +181,57 @@
         </div>
         <section class="panel">
           <div class="panel-heading">
+            <div><p class="eyebrow">BUDGET WATCH</p><h2>Provider balances and pressure</h2></div>
+            <span class="muted">estimated where provider usage is unavailable</span>
+          </div>
+          <div id="provider-budget" class="budget-grid"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-heading">
+            <div><p class="eyebrow">MODEL LEDGER</p><h2>Usage, throughput, and price</h2></div>
+            <span class="muted">rolling 24 hours plus all-time telemetry</span>
+          </div>
+          <div class="table-wrap">
+            <table class="model-ledger">
+              <thead>
+                <tr><th>Model</th><th>24h usage</th><th>All time</th><th>Output rate</th><th>Price</th><th>Budget</th></tr>
+              </thead>
+              <tbody id="model-budget"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-heading">
             <div><p class="eyebrow">ESCALATION POLICY</p><h2>Editable ladder</h2></div>
             <button class="control primary compact" id="save-ladder">Save order</button>
           </div>
           <div id="ladder-editor" class="ladder-editor"></div>
+        </section>
+      </section>
+
+      <section class="view" id="view-connections">
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">LOCAL CREDENTIAL CONTROL</p>
+              <h2>Inference connections</h2>
+            </div>
+            <span class="muted">values stay outside repositories and are never displayed</span>
+          </div>
+          <div id="connection-grid" class="connection-grid"></div>
+        </section>
+      </section>
+
+      <section class="view" id="view-voice">
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">SPEECH RUNTIME</p>
+              <h2>Voice services</h2>
+            </div>
+            <span class="muted">local and Google-backed options</span>
+          </div>
+          <div id="voice-grid" class="voice-grid"></div>
         </section>
       </section>
 
@@ -162,9 +254,50 @@
           <textarea id="guardrails" class="context-editor" spellcheck="false" aria-label="Guardrails"></textarea>
         </section>
       </section>
+
+      <section class="view" id="view-paperclip">
+        <section class="panel embedded-tool">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">GOALS AND ORGANIZATION</p>
+              <h2>Paperclip</h2>
+            </div>
+            <a class="control secondary compact tool-link" id="paperclip-link" target="_blank" rel="noreferrer">Open Paperclip</a>
+          </div>
+          <iframe id="paperclip-frame" title="Paperclip goals and agent organization" loading="lazy"></iframe>
+        </section>
+      </section>
+
+      <section class="view" id="view-silverbullet">
+        <section class="panel embedded-tool">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">SHARED AGENT MEMORY</p>
+              <h2>SilverBullet galaxy</h2>
+            </div>
+            <div class="tool-links">
+              <a class="control secondary compact tool-link" id="silverbullet-link" target="_blank" rel="noreferrer">Open SilverBullet</a>
+              <a class="control primary compact tool-link" id="galaxy-link" target="_blank" rel="noreferrer">Open galaxy</a>
+            </div>
+          </div>
+          <iframe id="silverbullet-frame" title="SilverBullet second brain galaxy" loading="lazy"></iframe>
+        </section>
+      </section>
     </main>
 
+    <dialog id="task-trace-dialog" class="task-trace-dialog">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">TASK EXECUTION TRACE</p>
+          <h2 id="task-trace-title">Task trace</h2>
+        </div>
+        <button class="icon-button" id="close-task-trace" type="button" aria-label="Close task trace">X</button>
+      </div>
+      <div id="task-trace-content" class="task-trace-content"></div>
+    </dialog>
+
     <div id="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="/app.js"></script>
+    <script type="module" src="/app.js?v=20260730"></script>
+    <script type="module" src="/agentic-os-controls.js"></script>
   </body>
 </html>

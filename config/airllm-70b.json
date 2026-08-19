@@ -1,0 +1,10 @@
+{
+  "runtime": "airllm",
+  "packageVersion": "3.1.0",
+  "venv": "C:\\AI\\airllm-venv",
+  "modelFamily": "70B-class candidate",
+  "modelRepo": "select-after-storage-check",
+  "layerShardRootEnv": "AIRLLM_LAYER_SHARDS_ROOT",
+  "automaticRouting": false,
+  "notes": "Isolated package install only. Model conversion creates temporary layer shards and must run on a verified fast local/removable disk."
+}

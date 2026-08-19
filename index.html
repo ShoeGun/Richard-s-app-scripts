@@ -1,13 +1,1791 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ShoeGun</title>
-  <link rel="stylesheet" href="/src/index.css" />
+  <meta charset="UTF-8">
+  <title>Richard Jones | Analytics & Engineering Portfolio</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <!-- React and React DOM -->
+  <script src="https://cdn.jsdelivr.net/npm/react/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom/umd/react-dom.production.min.js"></script>
+  <!-- Babel Compiler -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/6.26.0/babel.min.js"></script>
+  <!-- Bootstrap CSS CDN -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+    integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM"
+    crossorigin="anonymous"
+  >
+  <!-- Custom CSS -->
+  <style>
+    @keyframes gradient {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    body {
+      font-family: 'Roboto', sans-serif;
+      background: linear-gradient(-45deg, #2d3142, #4f5d75, #8b8e91, #a0522d);
+      background-size: 400% 400%;
+      animation: gradient 15s ease infinite;
+      color: #333;
+    }
+    .navbar {
+      background: linear-gradient(-45deg, #2d3142, #4f5d75, #8b8e91, #a0522d);
+      background-size: 400% 400%;
+      animation: gradient 15s ease infinite;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+      padding: 10px 20px;
+      position: fixed;
+      top: 0;
+      width: 100%;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .navbar-brand {
+      color: #bfc0c0;
+      font-weight: bold;
+      font-size: 1.5rem;
+      text-decoration: none;
+    }
+    .navbar-toggler {
+      display: none;
+      background-color: transparent;
+      border: none;
+      cursor: pointer;
+    }
+    .navbar-toggler-icon {
+      width: 30px;
+      height: 3px;
+      background-color: #ffffff;
+      display: block;
+      margin: 6px auto;
+    }
+    .navbar-nav {
+      display: flex;
+      flex-direction: row;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+      text-align: center;
+      width: 100%;
+    }
+    .nav-link {
+      font-weight: 500;
+      color: #bfc0c0;
+      transition: color 0.3s, transform 0.3s;
+      padding: 10px;
+      border-radius: 5px;
+      text-decoration: none;
+    }
+    .nav-link:hover {
+      color: #ef8354;
+      transform: translateY(-2px);
+      background-color: rgba(255, 255, 255, 0.1);
+    }
+    .btn-nav {
+      background-color: #4f5d75;
+      color: #ffffff;
+      border-radius: 20px;
+      padding: 5px 15px;
+      transition: background-color 0.3s, box-shadow 0.3s;
+    }
+    .btn-nav:hover {
+      background-color: #ef8354;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    section {
+      scroll-margin-top: 70px; /* Adjust based on your navbar height */
+    }
+    .hero-section {
+      background: linear-gradient(-45deg, #2d3142, #4f5d75, #8b8e91, #a0522d);
+      background-size: 400% 400%;
+      animation: gradient 15s ease infinite;
+      color: white;
+      padding: 100px 0;
+      margin-top: 60px;
+      text-align: center;
+    }
+    .hero-section h1 {
+      font-size: 3.5rem;
+      font-weight: 700;
+    }
+    .hero-section p {
+      font-size: 1.25rem;
+      margin-top: 20px;
+    }
+    .project-card {
+      transition: transform 0.2s, box-shadow 0.2s;
+      border: none;
+      border-radius: 10px;
+      overflow: hidden;
+      background: linear-gradient(to bottom right, #f0f0f0, #bfc0c0);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    .project-card:hover {
+      transform: scale(1.05);
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+    }
+    .card-title {
+      color: #2d3142;
+      font-weight: bold;
+    }
+    .card-footer {
+      background-color: #f0f0f0;
+      border-top: none;
+      text-align: center;
+    }
+    .btn-primary {
+      background-color: #4f5d75;
+      border: none;
+      transition: background-color 0.3s;
+    }
+    .btn-primary:hover {
+      background-color: #ef8354;
+    }
+    #about {
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 15px;
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+      padding: 50px;
+    }
+    #about img {
+      border: 5px solid #4f5d75;
+      margin-bottom: 20px;
+    }
+    .scroll-effect-grid {
+      position: relative;
+      min-height: 300px;
+      margin: 50px 0;
+      background: linear-gradient(45deg, #6b705c 25%, transparent 25%, transparent 75%, #6b705c 75%, #6b705c),
+                  linear-gradient(45deg, #6b705c 25%, transparent 25%, transparent 75%, #6b705c 75%, #6b705c);
+      background-size: 40px 40px;
+      background-position: 0 0, 20px 20px;
+    }
+    .scroll-effect-grid::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(45, 49, 66, 0.8);
+      mix-blend-mode: overlay;
+      pointer-events: none;
+    }
+    .chart-container {
+      background: rgba(240, 239, 235, 0.95);
+      border-radius: 15px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      padding: 20px;
+    }
+    .testimonial-section {
+      padding: 80px 0;
+      background: linear-gradient(to top, #f0f0f0, #bfc0c0);
+      color: #333;
+    }
+    .testimonial-card {
+      background: #ffffff;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      margin-bottom: 30px;
+    }
+    .services-section {
+      padding: 80px 0;
+      background: #e6e6e6;
+    }
+    .service-card {
+      background: #ffffff;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      padding: 30px;
+      transition: transform 0.3s;
+    }
+    .service-card:hover {
+      transform: translateY(-10px);
+    }
+    footer {
+      background-color: #2d3142;
+      color: #ffffff;
+      padding: 30px 0;
+    }
+    footer p {
+      margin: 0;
+    }
+    .social-icons a {
+      color: #ffffff;
+      margin: 0 15px;
+      font-size: 30px;
+      transition: color 0.3s;
+    }
+    .social-icons a:hover {
+      color: #ef8354;
+    }
+    .experience-overview {
+      display: flex;
+      flex-direction: column;
+      margin-top: 2rem;
+      border: 1px solid rgba(45, 49, 66, 0.14);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.82);
+      box-shadow: 0 12px 26px rgba(45, 49, 66, 0.08);
+      overflow: hidden;
+    }
+    .original-timeline-panel {
+      margin: 0 0 1.25rem;
+    }
+    .original-timeline-panel > summary {
+      cursor: pointer;
+      display: inline-block;
+      margin-bottom: .7rem;
+      padding: .45rem .8rem;
+      border: 1px solid rgba(79, 93, 117, .3);
+      border-radius: 6px;
+      color: #4f5d75;
+      background: rgba(255,255,255,.8);
+      font-weight: 800;
+      list-style: none;
+    }
+    .original-timeline-panel > summary::-webkit-details-marker { display: none; }
+    .timeline-embed-shell {
+      width: 100%;
+      overflow: hidden;
+      border: 1px solid rgba(79, 93, 117, .22);
+      border-radius: 12px;
+      background: #05060a;
+      box-shadow: 0 12px 28px rgba(45, 49, 66, .10);
+    }
+    .timeline-frame {
+      display: block;
+      width: 100%;
+      height: clamp(640px, calc(100vh - 320px), 900px);
+      min-height: 640px;
+      border: 0;
+      background: #05060a;
+    }
+    @media (max-width: 680px) {
+      .timeline-frame {
+        height: 840px;
+        min-height: 840px;
+      }
+    }
+    #dom-face-host[hidden] { display: none; }
+    .browser-agent-card {
+      overflow: hidden;
+      border: 1px solid rgba(89, 226, 220, .28);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, .88);
+    }
+    .browser-agent-card > iframe { display: block; }
+    .dom-why-card {
+      max-width: 620px;
+      margin: .9rem auto 0;
+      padding: .75rem 1rem;
+      border: 1px solid rgba(89, 226, 220, .28);
+      border-radius: 8px;
+      background: rgba(234, 245, 243, .9);
+      color: #24555a;
+    }
+    .dom-why-card > summary {
+      cursor: pointer;
+      font-weight: 800;
+      list-style: none;
+    }
+    .dom-why-card > summary::-webkit-details-marker { display: none; }
+    .dom-why-body {
+      max-width: 66ch;
+      margin-top: .8rem;
+      color: #365b61;
+      line-height: 1.5;
+    }
+    .dom-why-body h3 { margin: 0 0 .4rem; color: #24555a; font-size: 1rem; }
+    .dom-why-body p { margin: .45rem 0; }
+    .dom-fireworks { position: fixed; inset: 0; z-index: 1500; pointer-events: none; overflow: hidden; }
+    .dom-firework-spark {
+      position: absolute;
+      left: var(--x);
+      top: var(--y);
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: hsl(var(--hue) 88% 64%);
+      box-shadow: 0 0 12px hsl(var(--hue) 88% 64%);
+      animation: dom-firework-burst 1.35s cubic-bezier(.2,.75,.3,1) forwards;
+    }
+    @keyframes dom-firework-burst {
+      from { opacity: 1; transform: translate(0, 0) scale(1); }
+      to { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(.15); }
+    }
+    .dom-hotdog-rain { position: fixed; inset: 0; z-index: 1501; pointer-events: none; overflow: hidden; }
+    .dom-hotdog { position: absolute; left: var(--x); top: -12vh; font-size: 42px; line-height: 1; filter: drop-shadow(0 3px 2px rgba(0,0,0,.22)); animation: dom-hotdog-fall var(--duration) linear var(--delay) forwards; }
+    @keyframes dom-hotdog-fall {
+      0% { opacity: 0; transform: translate3d(0, -12vh, 0) rotate(var(--start-rotation)); }
+      12% { opacity: 1; }
+      100% { opacity: .9; transform: translate3d(var(--drift), 120vh, 0) rotate(var(--end-rotation)); }
+    }
+    .experience-kicker {
+      padding: 1.1rem 1.5rem 0;
+      color: #a0522d;
+      font-size: 0.76rem;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .experience-lede {
+      max-width: 760px;
+      margin: 0.35rem 1.5rem 1.5rem;
+      color: #4f5d75;
+    }
+    .resume-panel,
+    .consultation-panel {
+      margin: 1.5rem;
+      padding: 1.2rem 1.35rem;
+      border: 1px solid rgba(79, 93, 117, 0.24);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.72);
+    }
+    .resume-panel h3,
+    .consultation-panel h3 {
+      margin: 0 0 0.35rem;
+      color: #2d3142;
+    }
+    .resume-panel p,
+    .consultation-panel p {
+      margin: 0 0 0.8rem;
+      color: #4f5d75;
+    }
+    .resume-panel a,
+    .consultation-panel a {
+      display: inline-block;
+      margin-right: 0.6rem;
+      margin-bottom: 0.35rem;
+    }
+    .uber-chapter {
+      margin: 0 1.5rem 1.5rem;
+      border: 1px solid rgba(79, 93, 117, 0.24);
+      border-radius: 12px;
+      background: linear-gradient(135deg, #2d3142, #4f5d75);
+      color: #ffffff;
+      overflow: hidden;
+    }
+    .uber-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1.25rem;
+    }
+    .uber-mark {
+      display: grid;
+      width: 3.2rem;
+      height: 3.2rem;
+      flex: 0 0 3.2rem;
+      place-items: center;
+      border: 2px solid rgba(255, 255, 255, 0.8);
+      border-radius: 50%;
+      color: #ffffff;
+      font-size: 1.55rem;
+      font-weight: 800;
+      letter-spacing: -0.08em;
+    }
+    .uber-header h3 {
+      margin: 0;
+      font-size: 1.35rem;
+    }
+    .uber-header p {
+      margin: 0.25rem 0 0;
+      color: rgba(255, 255, 255, 0.76);
+    }
+    .experience-duration {
+      margin-left: auto;
+      padding: 0.4rem 0.7rem;
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      border-radius: 999px;
+      color: #ffffff;
+      font-size: 0.82rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .uber-path {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border-top: 1px solid rgba(255, 255, 255, 0.14);
+    }
+    .career-step {
+      position: relative;
+      min-height: 8.5rem;
+      padding: 1rem 1.1rem 1.15rem;
+      border-right: 1px solid rgba(255, 255, 255, 0.14);
+    }
+    .career-step:last-child {
+      border-right: 0;
+    }
+    .step-number {
+      display: block;
+      margin-bottom: 1rem;
+      color: #ef8354;
+      font-size: 0.74rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+    }
+    .career-step strong {
+      display: block;
+      margin-bottom: 0.35rem;
+      font-size: 0.95rem;
+    }
+    .career-step p {
+      margin: 0;
+      color: rgba(255, 255, 255, 0.72);
+      font-size: 0.86rem;
+      line-height: 1.45;
+    }
+    .experience-entries {
+      display: grid;
+      gap: 0;
+      margin: 0 1.5rem 1.5rem;
+    }
+    .experience-entry {
+      display: grid;
+      grid-template-columns: 0.42rem minmax(0, 1fr);
+      gap: 1rem;
+      padding: 1.15rem 0;
+      border-top: 1px solid rgba(45, 49, 66, 0.14);
+    }
+    .experience-entry::before {
+      content: '';
+      display: block;
+      border-radius: 999px;
+      background: #ef8354;
+    }
+    .experience-entry h3 {
+      margin: 0;
+      color: #2d3142;
+      font-size: 1.1rem;
+    }
+    .experience-meta {
+      margin: 0.25rem 0 0.65rem;
+      color: #a0522d;
+      font-size: 0.86rem;
+      font-weight: 700;
+    }
+    .experience-entry p {
+      margin-bottom: 0.65rem;
+    }
+    .experience-entry ul {
+      margin: 0;
+      padding-left: 1.2rem;
+      color: #4f5d75;
+    }
+    .experience-entry li + li {
+      margin-top: 0.35rem;
+    }
+    .experience-overview > .experience-kicker,
+    .experience-overview > .experience-lede,
+    .experience-overview > .career-timeline,
+    .experience-overview > .experience-screed,
+    .source-timeline-legacy {
+      display: none;
+    }
+    .experience-primary { order: 2; }
+    .experience-tree { order: 3; }
+    .resume-panel { order: 4; }
+    .experience-overview details > summary {
+      list-style: none;
+    }
+    .experience-overview details > summary::-webkit-details-marker {
+      display: none;
+    }
+    .dom-presentation-stack {
+      position: relative;
+      display: grid !important;
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      gap: 0;
+    }
+    .dom-presentation-stack > .col {
+      width: auto !important;
+      max-width: none !important;
+      flex: none !important;
+    }
+    .dom-presentation-stack > .col {
+      transition: opacity 180ms ease, transform 220ms ease, filter 180ms ease;
+    }
+    .dom-presentation-stack.is-stacked > .col {
+      grid-area: 1 / 1;
+      opacity: .32;
+      filter: saturate(.45);
+      transform: translate(0, 0) scale(.96);
+      pointer-events: none;
+    }
+    .dom-presentation-stack.is-stacked > .col.is-presentation-focus {
+      z-index: 2;
+      opacity: 1;
+      filter: none;
+      transform: translateY(-8px) scale(1);
+      pointer-events: auto;
+      box-shadow: 0 18px 38px rgba(45, 49, 66, .24);
+    }
+    .dom-presentation-workspace {
+      position: fixed;
+      inset: 5vh 4vw;
+      z-index: 2200;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      padding: 14px;
+      border: 1px solid rgba(89, 226, 220, .55);
+      border-radius: 12px;
+      background: rgba(8, 30, 40, .97);
+      box-shadow: 0 22px 70px rgba(0, 0, 0, .45);
+      color: #e9ffff;
+    }
+    .dom-presentation-workspace::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background: rgba(3, 12, 16, .48);
+      pointer-events: none;
+    }
+    .dom-presentation-workspace header {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .dom-presentation-workspace h3 { margin: 0; font-size: 1rem; }
+    .dom-presentation-workspace button {
+      border: 1px solid rgba(89, 226, 220, .6);
+      border-radius: 4px;
+      padding: 7px 10px;
+      color: #e9ffff;
+      background: rgba(89, 226, 220, .12);
+      cursor: pointer;
+    }
+    .dom-presentation-pane {
+      min-width: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 7px;
+      min-height: 0;
+    }
+    .dom-presentation-pane label { color: rgba(233, 255, 255, .78); font-size: .8rem; }
+    .dom-presentation-pane input {
+      width: 100%;
+      margin-top: 5px;
+      border: 1px solid rgba(89, 226, 220, .4);
+      border-radius: 4px;
+      padding: 7px;
+      color: #e9ffff;
+      background: rgba(0, 0, 0, .24);
+    }
+    .dom-presentation-pane iframe {
+      width: 100%;
+      height: 100%;
+      min-height: 360px;
+      border: 0;
+      border-radius: 6px;
+      background: #fff;
+    }
+    .dom-presentation-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    @media (max-width: 768px) {
+      .dom-presentation-workspace { inset: 3vh 3vw; grid-template-columns: 1fr; overflow: auto; }
+      .dom-presentation-workspace header { grid-column: auto; }
+      .dom-presentation-pane iframe { min-height: 280px; }
+    }
+    .dom-face {
+      max-width: 620px;
+      margin: 0 auto;
+      padding: 1rem;
+      border: 1px solid rgba(79, 93, 117, .24);
+      border-radius: 12px;
+      background: #102f38;
+      box-shadow: 0 14px 28px rgba(16, 47, 56, .18);
+    }
+    .dom-face-intro {
+      margin: 0 0 .8rem;
+      color: rgba(233, 255, 255, .76);
+      text-align: center;
+    }
+    .dom-face-stack {
+      display: grid;
+      gap: .75rem;
+      max-width: 520px;
+      margin: 0 auto;
+    }
+    .dom-face-panel {
+      min-width: 0;
+      padding: .6rem .8rem;
+      border: 1px solid rgba(89, 226, 220, .22);
+      border-radius: 8px;
+      background: rgba(4, 18, 24, .5);
+    }
+    .dom-face-panel h5 {
+      margin: 0 0 .35rem;
+      color: #e9ffff;
+    }
+    .dom-face-panel canvas {
+      display: block;
+      height: 140px !important;
+      max-height: 140px;
+      width: 100% !important;
+      max-width: 100%;
+    }
+    .dom-face-mouth canvas { height: 160px !important; max-height: 160px; }
+    .experience-tree {
+      margin: 0 1.5rem 1.5rem;
+      border-top: 1px solid rgba(45, 49, 66, 0.14);
+      padding-top: 1rem;
+    }
+    .experience-tree > summary {
+      cursor: pointer;
+      color: #4f5d75;
+      font-weight: 800;
+    }
+    .experience-supplemental {
+      margin: 0 1.5rem 1.5rem;
+      border-top: 1px solid rgba(45, 49, 66, 0.14);
+      padding-top: 1rem;
+    }
+    .experience-supplemental > summary {
+      cursor: pointer;
+      color: #4f5d75;
+      font-weight: 800;
+    }
+    .experience-supplemental-content {
+      padding-top: 1rem;
+    }
+    .experience-primary > summary,
+    .experience-tree > summary,
+    .experience-supplemental > summary {
+      position: relative;
+      padding-left: 3.5rem;
+    }
+    .experience-primary > summary::before,
+    .experience-tree > summary::before,
+    .experience-supplemental > summary::before {
+      content: 'VIEW';
+      position: absolute;
+      left: 0;
+      top: 0;
+      color: #a0522d;
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+    }
+    .experience-primary[open] > summary::before,
+    .experience-tree[open] > summary::before,
+    .experience-supplemental[open] > summary::before {
+      content: 'HIDE';
+    }
+    .industry-tree {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+      border-left: 2px solid #d29a50;
+      padding-left: 14px;
+    }
+    .industry-branch {
+      border: 1px solid rgba(45, 49, 66, 0.14);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.62);
+    }
+    .industry-branch summary {
+      cursor: pointer;
+      padding: 10px 12px;
+      color: #2d3142;
+      font-weight: 800;
+      list-style: none;
+    }
+    .industry-branch summary::-webkit-details-marker { display: none; }
+    .industry-branch summary::before {
+      content: none;
+    }
+    .industry-branch p {
+      margin: 0;
+      padding: 0 12px 12px 30px;
+      color: #4f5d75;
+      line-height: 1.5;
+    }
+    }
+    .career-timeline {
+      position: relative;
+      margin: 0 1.5rem 1.5rem;
+      padding: 0.5rem 0 0.25rem;
+    }
+    .timeline-entry {
+      position: relative;
+      display: grid;
+      grid-template-columns: 3.2rem minmax(0, 1fr);
+      gap: 1rem;
+      padding-bottom: 1.4rem;
+    }
+    .timeline-entry:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      top: 3.1rem;
+      bottom: 0;
+      left: 1.5rem;
+      width: 2px;
+      background: #d29a50;
+    }
+    .timeline-node {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      width: 3.1rem;
+      height: 3.1rem;
+      place-items: center;
+      border: 3px solid #fffdf8;
+      border-radius: 50%;
+      color: #ffffff;
+      background: #2d3142;
+      box-shadow: 0 0 0 2px #d29a50;
+      font-size: 1.25rem;
+      font-weight: 850;
+    }
+    .timeline-entry-content {
+      min-width: 0;
+      padding-bottom: 0.5rem;
+    }
+    .timeline-entry-heading {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 0.8rem;
+      margin-bottom: 0.2rem;
+    }
+    .timeline-entry-heading h3 {
+      margin: 0;
+      color: #2d3142;
+      font-size: 1.15rem;
+    }
+    .timeline-duration {
+      color: #a0522d;
+      font-size: 0.78rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .timeline-entry-meta {
+      margin: 0 0 0.85rem;
+      color: #5b6778;
+      font-size: 0.85rem;
+    }
+    .uber-role-path {
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      margin-top: 0.7rem;
+    }
+    .uber-oval {
+      position: relative;
+      flex: 1 1 0;
+      min-width: 0;
+      border: 1px solid #9b6b39;
+      border-radius: 999px;
+      background: #fff8e8;
+    }
+    .uber-oval + .uber-oval {
+      margin-left: 1.25rem;
+    }
+    .uber-oval + .uber-oval::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: -1.25rem;
+      width: 1.25rem;
+      height: 2px;
+      background: #d29a50;
+    }
+    .uber-oval summary {
+      cursor: pointer;
+      padding: 0.8rem 1rem;
+      color: #2d3142;
+      font-size: 0.83rem;
+      font-weight: 800;
+      list-style: none;
+      text-align: center;
+    }
+    .uber-oval summary::-webkit-details-marker { display: none; }
+    .uber-oval summary::after {
+      content: none;
+    }
+    .uber-oval p {
+      margin: 0;
+      padding: 0 1rem 0.85rem;
+      color: #4f5d75;
+      font-size: 0.78rem;
+      line-height: 1.4;
+      text-align: center;
+    }
+    .timeline-entry-description {
+      max-width: 70ch;
+      margin: 0;
+      color: #4f5d75;
+      line-height: 1.55;
+    }
+    .timeline-entry-freelance .timeline-node { background: #a0522d; }
+    .timeline-entry-trade .timeline-node { background: #6b705c; }
+    .experience-screed {
+      margin: 0 1.5rem 1.5rem;
+      border-top: 1px solid rgba(45, 49, 66, 0.14);
+      padding-top: 1rem;
+    }
+    .experience-screed summary {
+      cursor: pointer;
+      color: #4f5d75;
+      font-weight: 800;
+    }
+    .experience-screed-content {
+      max-width: 75ch;
+      padding: 1rem 0 0.25rem;
+      color: #4f5d75;
+      line-height: 1.6;
+    }
+    .experience-screed-content h3 {
+      margin: 1rem 0 0.35rem;
+      color: #2d3142;
+      font-size: 1rem;
+    }
+    .experience-screed-content p { margin: 0.45rem 0; }
+    .experience-screed-content ul { margin: 0.45rem 0; padding-left: 1.2rem; }
+    /* Media Queries for Mobile Responsiveness */
+    @media (max-width: 768px) {
+      .navbar {
+        width: 100%;
+        justify-content: space-between;
+        padding: 10px 15px;
+        background: linear-gradient(-45deg, #2d3142, #4f5d75, #8b8e91, #a0522d);
+      }
+      .navbar-toggler {
+        display: block;
+        background: none;
+        border: none;
+      }
+      .navbar-toggler-icon {
+        width: 30px;
+        height: 3px;
+        background-color: #ffffff;
+        display: block;
+        margin: 6px 0;
+      }
+      .navbar-collapse {
+        display: none;
+      }
+      .navbar-collapse.active {
+        display: block;
+      }
+      .navbar-nav {
+        flex-direction: column;
+        justify-content: flex-start;
+        align-items: center;
+        width: 100%;
+        background: rgba(0, 0, 0, 0.9);
+        position: absolute;
+        top: 60px; /* Adjust based on your navbar height */
+        left: 0;
+        right: 0;
+        padding-top: 10px;
+        box-shadow: -4px 0 8px rgba(0, 0, 0, 0.3);
+        z-index: 1000;
+      }
+      .nav-link {
+        color: #ffffff;
+        padding: 15px;
+        text-align: center;
+        width: 100%;
+      }
+    }
+    @media (max-width: 768px) {
+      .experience-overview {
+        margin-top: 1.25rem;
+      }
+      .experience-kicker,
+      .experience-lede,
+      .uber-chapter,
+      .experience-entries {
+        margin-left: 1rem;
+        margin-right: 1rem;
+      }
+      .experience-kicker {
+        padding-left: 0;
+      }
+      .experience-lede {
+        margin-top: 0.35rem;
+      }
+      .uber-header {
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+      .experience-duration {
+        margin-left: 4.2rem;
+        margin-top: -0.5rem;
+      }
+      .uber-path {
+        grid-template-columns: 1fr;
+      }
+      .career-step {
+        min-height: auto;
+        border-right: 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+      }
+      .career-step:last-child {
+        border-bottom: 0;
+      }
+      .career-timeline,
+      .experience-screed,
+      .experience-tree,
+      .experience-supplemental {
+        margin-left: 1rem;
+        margin-right: 1rem;
+      }
+      .dom-presentation-stack {
+        grid-template-columns: 1fr !important;
+      }
+      .timeline-entry-heading {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 0.2rem;
+      }
+      .uber-role-path {
+        display: grid;
+        gap: 0.65rem;
+      }
+      .uber-oval + .uber-oval {
+        margin-left: 0;
+      }
+      .uber-oval + .uber-oval::before {
+        top: -0.65rem;
+        left: 50%;
+        width: 2px;
+        height: 0.65rem;
+      }
+    }
+  </style>
+  <!-- Chart.js Library -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <div id="root"></div>
-  <script type="module" src="/src/main.tsx"></script>
+  <!-- React Navigation Bar -->
+  <div id="navbar"></div>
+  <script type="text/babel">
+    class Navbar extends React.Component {
+      constructor(props) {
+        super(props);
+        this.state = { isOpen: false };
+      }
+
+      toggleNavbar = () => {
+        this.setState((prevState) => ({ isOpen: !prevState.isOpen }));
+      };
+
+      closeNavbar = () => {
+        this.setState({ isOpen: false });
+      };
+
+      render() {
+        return (
+          <nav className="navbar navbar-expand-lg fixed-top">
+            <a className="navbar-brand" href="#navbar">Richard Jones</a>
+            <button
+              className="navbar-toggler"
+              type="button"
+              onClick={this.toggleNavbar}
+            >
+              <span className="navbar-toggler-icon"></span>
+              <span className="navbar-toggler-icon"></span>
+              <span className="navbar-toggler-icon"></span>
+            </button>
+            <div className={`navbar-collapse ${this.state.isOpen ? 'active' : ''}`} id="navbarNav">
+              <ul className="navbar-nav mx-auto">
+                <li className="nav-item"><a className="nav-link" href="#navbar" onClick={this.closeNavbar}>Home</a></li>
+                <li className="nav-item"><a className="nav-link" href="#about" onClick={this.closeNavbar}>About Me</a></li>
+                <li className="nav-item"><a className="nav-link" href="#projects" onClick={this.closeNavbar}>Projects</a></li>
+                <li className="nav-item"><a className="nav-link" href="#timeline" onClick={this.closeNavbar}>Work History</a></li>
+                <li className="nav-item"><a className="nav-link" href="#browser-agent" onClick={this.closeNavbar}>Dom</a></li>
+                <li className="nav-item"><a className="nav-link" href="#browser-agent" onClick={this.closeNavbar}>Browser Agent</a></li>
+                <li className="nav-item"><a className="nav-link" href="#services" onClick={this.closeNavbar}>Services</a></li>
+                <li className="nav-item"><a className="nav-link" href="#contact" onClick={this.closeNavbar}>Contact</a></li>
+              </ul>
+            </div>
+          </nav>
+        );
+      }
+    }
+
+    ReactDOM.render(<Navbar />, document.getElementById('navbar'));
+  </script>
+
+  <!-- Hero Section -->
+  <section class="hero-section">
+    <div class="container">
+      <h1>Shaping Data. Driving Innovation.</h1>
+      <p class="lead">Unifying Data Engineering, Advanced Analytics, and Operational Strategy to Modernize Business Solutions</p>
+      <p class="lead">Explore my portfolio of dynamic analytics, AI integrations, and transformative engineering projects.</p>
+    </div>
+  </section>
+
+  <!-- About Me Section -->
+  <section id="about" class="py-5">
+    <div class="container">
+      <h2 class="mb-5 text-center">About Me</h2>
+      <div class="row">
+        <div class="col-md-4 text-center">
+          <img src="/profile1.jpg" class="rounded-circle img-fluid" alt="Richard Jones">
+        </div>
+        <div class="col-md-8">
+          <p>Hello! I'm <strong>Richard Jones</strong> — an Operations Specialist, Data Engineer, Data Analyst, and full-stack developer who thrives on harnessing data to push boundaries and drive efficiency. From large-scale operations and compliance to AI-driven solutions and real-time analytics, my background covers a diverse range of industries, including Banking, Government, and Freelance Consulting.</p>
+          <p><strong>AI consulting and integration:</strong> connecting models, data, browser experiences, and business workflows into useful systems.</p>
+          <div class="mt-4">
+            <a href="https://www.linkedin.com/in/richardjones2020/" target="_blank" class="btn btn-primary">Connect with me on LinkedIn</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Projects Section -->
+  <section id="projects" class="py-5">
+    <div class="container">
+      <h2 class="mb-5 text-center">Featured Projects</h2>
+      <div class="row row-cols-1 row-cols-md-3 g-4">
+        <!-- Project Card 1: Henry's Super Scoops CMS -->
+        <div class="col">
+          <div class="card h-100 project-card" data-dom-project="henrys">
+            <div class="card-body">
+              <h5 class="card-title">Henry's Super Scoops CMS</h5>
+              <p class="card-text">
+                A streamlined CMS built with Google Sheets and Apps Script, automating appointments, resource allocation, and Calendar sync for a free dessert-themed brand concept.
+              </p>
+              <a href="https://shoegun.github.io/Henry-s/learn-more.html" target="_blank">Learn More</a>
+            </div>
+            <div class="card-footer">
+              <a href="https://shoegun.github.io/Henry-s/" class="btn btn-primary" target="_blank">View Project</a>
+            </div>
+          </div>
+        </div>
+        <!-- Project Card 2: Kepler in a Google Web App -->
+        <div class="col">
+          <div class="card h-100 project-card" data-dom-project="kepler">
+            <div class="card-body">
+              <h5 class="card-title">Kepler in a Google Web App</h5>
+              <p class="card-text">
+                Demonstrates the extensibility of Kepler.gl within Google Web Apps. Features dynamic data loading from Sheets and interactive mapping, perfect for geospatial analytics.
+              </p>
+            </div>
+            <div class="card-footer">
+              <a href="https://script.google.com/macros/s/AKfycbyCSMyu_3Knjv0sq-UBT7SdF3fV9TfkILObnqfiauo5LgqpV5i_WbmtHU6AqWFVmtLj/exec" class="btn btn-primary" target="_blank">View Project</a>
+            </div>
+          </div>
+        </div>
+        <!-- Project Card 3: Altitude Directions App -->
+        <div class="col">
+          <div class="card h-100 project-card" data-dom-project="altitude">
+            <div class="card-body">
+              <h5 class="card-title">Altitude Directions App</h5>
+              <p class="card-text">
+                A specialized route-planning tool that factors altitude thresholds, assisting divers, aviators, and altitude-sensitive users in safe and efficient route mapping.
+              </p>
+            </div>
+            <div class="card-footer">
+              <a href="https://script.google.com/macros/s/AKfycbynli9bhc36gqUIQmKtqnxa-jOcYmLrqsLsGNwGmuS2cdtUW7OjEyfUVQVJvl9_s9V5xw/exec" class="btn btn-primary" target="_blank">View Project</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Browser Agent Section: kept immediately after the featured work. -->
+  <section id="browser-agent" class="py-5">
+    <div class="container">
+      <h2 class="mb-4 text-center">Meet Dom</h2>
+      <p class="text-center mb-4">Download Dom locally. After activation, connect a public Google Sheet or try the bundled sample.</p>
+      <div class="browser-agent-card">
+      <iframe
+        src="/agent/?v=20260804-2"
+        style="width: 100%; height: 160px; min-height: 140px; border: none; border-radius: 14px; overflow: hidden;"
+        loading="lazy"
+        title="Local browser analytics agent"
+      ></iframe>
+      <div id="dom-face-host" hidden>
+        <div class="dom-face" id="dom-face" aria-label="Dom's chart face">
+          <p class="dom-face-intro">The same charts can explain data or give Dom a little expression.</p>
+          <p class="dom-face-status" id="dom-face-status" aria-live="polite">Mood: curious</p>
+          <div class="dom-face-stack">
+            <div class="dom-face-panel dom-face-eyes">
+              <canvas id="chart2" aria-label="Dom's animated eyes"></canvas>
+            </div>
+            <div class="dom-face-panel dom-face-mouth">
+              <canvas id="chart1" aria-label="Dom's animated mouth"></canvas>
+            </div>
+          </div>
+        </div>
+        <details class="dom-why-card" aria-labelledby="dom-why-title">
+          <summary>Why this browser agent is useful</summary>
+          <div class="dom-why-body">
+            <h3 id="dom-why-title">A small local model with a real page to work with.</h3>
+            <p>Dom runs in the visitor's browser, can use public sheet context, and can propose grounded changes to the page without sending the page to a hosted chat API.</p>
+            <p>The face is driven by the same Chart.js layer used for demonstrations, so expressions and data visualizations can share one living surface.</p>
+            <p class="dom-device-note">For the best experience, use a computer with WebGPU or a dedicated GPU.</p>
+          </div>
+        </details>
+      </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Work History Timeline Section -->
+  <section id="timeline" class="py-5">
+    <div class="container">
+      <details class="original-timeline-panel" open>
+        <summary><span class="timeline-toggle-label">Hide</span></summary>
+        <div class="timeline-embed-shell">
+          <iframe
+            class="timeline-frame"
+            src="https://script.google.com/macros/s/AKfycbwU2KQU0dn9E_anYJ7b3zOniqtlqrHZSt64ezUeid1q_3Dn3c_qKQ30UqdIseY3Ewd8/exec?v=2"
+            scrolling="auto"
+            referrerpolicy="no-referrer"
+            title="Richard Jones's original Google Sheets work-history timeline"
+          ></iframe>
+        </div>
+      </details>
+      <div class="experience-overview">
+        <details class="experience-tree">
+          <summary>Expand industry experience and consulting practice</summary>
+          <div class="industry-tree">
+            <details class="industry-branch">
+              <summary>Commercial - Uber and consulting</summary>
+              <p><strong>Uber:</strong> six years on the original timeline, including machine-learning model work, global analytics, and backend analytics tables built with <strong>Hive</strong>. Commercial consulting also included technology, analytics, and business-development work for clients.</p>
+            </details>
+            <details class="industry-branch">
+              <summary>Healthcare - Reciprocity Health</summary>
+              <p><strong>Reciprocity Health:</strong> lead engineering work connecting healthcare workflows, data, and practical software delivery.</p>
+            </details>
+            <details class="industry-branch">
+              <summary>Banking - Bank of America and JPMorgan Chase</summary>
+              <p>Worked with <strong>Bank of America</strong> as a Senior Operations Analyst and with <strong>JPMorgan Chase</strong> in financial-services technology and analytics. The work included fraud operations, forecasting, process redesign, secure data integration, and disciplined delivery.</p>
+            </details>
+            <details class="industry-branch">
+              <summary>Commercial consulting</summary>
+              <p>Advised technology and commercial clients on analytics, workflows, websites, branding, and growth, including consulting for a commercial weed-delivery company and other small businesses.</p>
+            </details>
+            <details class="industry-branch">
+              <summary>Government - Vangent / CDC</summary>
+              <p><strong>Vangent:</strong> contractor analytics involving Medicare, Medicaid, Faisac, and the <strong>CDC</strong>. The work required accuracy, compliance, process discipline, and clear evidence.</p>
+            </details>
+            <details class="industry-branch">
+              <summary>AI, engineering, and legal technology consulting</summary>
+              <p>Red-teamed foundational models, built data pipelines and dashboards, supported legal technology and paralegal workflows, interrogated evidence with ML-assisted tools, and delivered full-stack systems that connect technical ideas to practical outcomes.</p>
+            </details>
+          </div>
+        </details>
+        <details class="experience-supplemental experience-primary">
+          <summary>Optional supplemental career overview</summary>
+          <div class="experience-supplemental-content">
+        <div class="experience-kicker">Locally authored career context</div>
+        <p class="experience-lede">
+          This supplemental view adds context to the live Google Sheets timeline. Richard has worked across commercial technology, healthcare, government contracting, banking, legal technology, and independent consulting, moving between operations, analytics, engineering, and business delivery.
+        </p>
+        <p class="experience-lede">That range is the through-line: understand the operating problem, build the data and software around it, and leave people with a system they can actually use.</p>
+
+        <div class="career-timeline" aria-label="Interactive career timeline">
+          <article class="timeline-entry timeline-entry-uber">
+            <div class="timeline-node" aria-label="Uber">U</div>
+            <div class="timeline-entry-content">
+              <div class="timeline-entry-heading">
+                <h3>Uber</h3>
+                <span class="timeline-duration">6 years total</span>
+              </div>
+              <p class="timeline-entry-meta">Operations, analytics, and machine learning</p>
+              <div class="uber-role-path" aria-label="Uber lateral progression">
+                <details class="uber-oval">
+                  <summary>Machine-learning models</summary>
+                  <p>Worked with machine-learning models in a high-volume commercial environment.</p>
+                </details>
+                <details class="uber-oval">
+                  <summary>Hive analytics tables</summary>
+                  <p>Built backend tables for analytics using Hive.</p>
+                </details>
+                <details class="uber-oval">
+                  <summary>Global analytics</summary>
+                  <p>Worked with analytics at the scale of Uber's global business.</p>
+                </details>
+              </div>
+            </div>
+          </article>
+
+          <article class="timeline-entry timeline-entry-healthcare">
+            <div class="timeline-node" aria-label="Reciprocity Health">RH</div>
+            <div class="timeline-entry-content">
+              <div class="timeline-entry-heading">
+                <h3>Reciprocity Health</h3>
+                <span class="timeline-duration">Lead engineer</span>
+              </div>
+              <p class="timeline-entry-meta">Healthcare</p>
+              <p class="timeline-entry-description">Led engineering work across healthcare workflows, data systems, and practical software delivery.</p>
+            </div>
+          </article>
+
+          <article class="timeline-entry timeline-entry-government">
+            <div class="timeline-node" aria-label="Vangent">V</div>
+            <div class="timeline-entry-content">
+              <div class="timeline-entry-heading">
+                <h3>Vangent</h3>
+                <span class="timeline-duration">Government analytics contractor</span>
+              </div>
+              <p class="timeline-entry-meta">Public-sector healthcare analytics</p>
+              <p class="timeline-entry-description">As a Vangent contractor, worked on analytics involving Medicare, Medicaid, Faisac, and the CDC, where accuracy, compliance, and evidence mattered.</p>
+            </div>
+          </article>
+
+          <article class="timeline-entry timeline-entry-freelance">
+            <div class="timeline-node" aria-label="Freelance consulting">AI</div>
+            <div class="timeline-entry-content">
+              <div class="timeline-entry-heading">
+                <h3>Freelance Consultant</h3>
+                <span class="timeline-duration">4 years 4 months</span>
+              </div>
+              <p class="timeline-entry-meta">Sep 2020 - Jan 2025 - AI, data analytics, paralegal support, and business development.</p>
+              <p class="timeline-entry-description">AI and analytics consulting, legal-technology and paralegal work, full-stack delivery, branding, and business strategy for clients.</p>
+            </div>
+          </article>
+
+          <article class="timeline-entry timeline-entry-banking">
+            <div class="timeline-node" aria-label="Bank of America">BA</div>
+            <div class="timeline-entry-content">
+              <div class="timeline-entry-heading">
+                <h3>Bank of America</h3>
+                <span class="timeline-duration">Senior Operations Analyst</span>
+              </div>
+              <p class="timeline-entry-meta">Banking operations, forecasting, and fraud analytics</p>
+              <p class="timeline-entry-description">Led operational improvements in a high-volume fraud environment, including forecasting, staffing coordination, process redesign, and systems work that made complex operations easier to run and measure.</p>
+            </div>
+          </article>
+        </div>
+
+        <details class="experience-screed">
+          <summary>Expand the full experience story</summary>
+          <div class="experience-screed-content">
+            <h3>Uber - six years of lateral movement</h3>
+            <p>Uber is shown as one connected company chapter so the progression is easy to read: operations foundation, analytics and systems, then global analytics work at exceptional scale.</p>
+
+            <h3>Freelance Consultant - AI, Data Analytics &amp; Business Development</h3>
+            <p>Delivered projects across artificial intelligence, technical consulting, paralegal support, business development, branding, and full-stack web development.</p>
+            <ul>
+              <li><strong>Paralegal and legal-technology support:</strong> organized case materials, researched issues, interrogated complex documents with AI-assisted workflows, and helped clients synthesize evidence for their cases.</li>
+              <li><strong>AI and analytics:</strong> red-teamed foundational models, improved prompt structures, built tailored machine-learning workflows, and created dashboards and data pipelines for decision support.</li>
+              <li><strong>Technical and business delivery:</strong> built websites and custom tools, advised clients on cloud transitions, and developed branding, market research, and acquisition strategies.</li>
+            </ul>
+
+            <h3>Bank of America - Senior Operations Analyst</h3>
+            <p>At Bank of America, I worked across fraud operations, forecasting, staffing, and process improvement. The role combined operational judgment with analytical systems work: making complex workflows measurable, improving coverage, and helping teams act on better information.</p>
+          </div>
+        </details>
+          </div>
+        </details>
+        <aside class="resume-panel" aria-labelledby="resume-title">
+          <h3 id="resume-title">Download my resume</h3>
+          <p>Download the polished PDF, or grab the editable Word version. The interactive timeline above provides the richer visual record.</p>
+          <a class="btn btn-primary" href="/Richard-Jones-resume.pdf" download="Richard-Jones-resume.pdf">Download PDF resume</a>
+          <a class="btn btn-outline-secondary" href="/Richard-Jones-resume.docx" download="Richard-Jones-resume.docx">Download editable DOCX</a>
+          <a class="btn btn-outline-secondary" href="/Richard-Jones-resume.pdf" target="_blank" rel="noopener">View PDF</a>
+        </aside>
+        <div class="legacy-experience-entries" hidden>
+          <article class="experience-entry">
+            <div>
+              <h3>Freelance Consultant - AI, Data Analytics &amp; Business Development</h3>
+              <p class="experience-meta">Sep 2020 - Jan 2025 · 4 years 4 months · Independent</p>
+              <p>
+                Delivered projects across AI, technical consulting, legal support, business development, branding, and full-stack web development. Work included red-teaming foundational models, building analytics tools, designing data pipelines, and helping small businesses turn technical ideas into useful products.
+              </p>
+              <ul>
+                <li><strong>Paralegal and legal-technology support:</strong> organized case materials, researched issues, interrogated complex documents with AI-assisted workflows, and helped clients synthesize evidence for their cases.</li>
+                <li><strong>AI and analytics:</strong> tested LLM behavior, improved prompt structures, built tailored machine-learning workflows, and created dashboards and data pipelines for decision support.</li>
+                <li><strong>Technical and business delivery:</strong> built websites and custom tools, advised clients on cloud transitions, and developed branding and acquisition strategies that improved market visibility.</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="experience-entry">
+            <div>
+              <h3>Industrial Electrical Engineer / Journeyman</h3>
+              <p class="experience-meta">Indiana · 1 year</p>
+              <p>
+                Industrial electrical engineering and journeyman work that grounded my later software and analytics work in physical systems, field execution, troubleshooting, and safety-minded problem solving.
+              </p>
+            </div>
+          </article>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <script>
+    (() => {
+      const timelineSection = document.getElementById('timeline');
+      document.getElementById('about')?.after(timelineSection);
+      const timelinePanel = document.querySelector('.original-timeline-panel');
+      const timelineFrame = document.querySelector('.timeline-frame');
+      const timelineToggleLabel = document.querySelector('.timeline-toggle-label');
+      const syncTimelineToggle = () => {
+        if (timelineToggleLabel && timelinePanel) timelineToggleLabel.textContent = timelinePanel.open ? 'Hide' : 'Show';
+      };
+      timelinePanel?.addEventListener('toggle', syncTimelineToggle);
+      syncTimelineToggle();
+      timelineFrame?.addEventListener('load', () => {
+        timelineFrame.contentWindow?.postMessage({ type: 'shoegun-timeline-resize-request' }, '*');
+      });
+      window.addEventListener('message', (event) => {
+        if (event.source === timelineFrame?.contentWindow && event.data?.type === 'shoegun-timeline-height') {
+          const height = Number(event.data.height);
+          if (Number.isFinite(height) && height >= 700 && height <= 2400 && timelineFrame) {
+            timelineFrame.style.height = `${Math.ceil(height)}px`;
+          }
+          return;
+        }
+        const agentFrame = document.querySelector('#browser-agent iframe');
+        if (!agentFrame || event.source !== agentFrame.contentWindow || event.data?.type !== 'shoegun-browser-agent-height') return;
+        const height = Number(event.data.height);
+        if (Number.isFinite(height) && height >= 140 && height <= 5000) {
+          agentFrame.style.height = `${Math.ceil(height)}px`;
+        }
+      });
+
+      const projectGrid = document.querySelector('#projects .row');
+      const projectCards = Array.from(document.querySelectorAll('[data-dom-project]'));
+      if (projectGrid && projectCards.length) {
+        projectGrid.classList.add('dom-presentation-stack');
+        window.__shoegunPresentation = {
+          showProject(key) {
+            const normalized = String(key || '').toLowerCase();
+            const card = projectCards.find((candidate) => {
+              const value = candidate.getAttribute('data-dom-project') || '';
+              return value === normalized || candidate.textContent.toLowerCase().includes(normalized);
+            });
+            if (!card) return false;
+            projectGrid.classList.add('is-stacked');
+            projectCards.forEach((candidate) => {
+              candidate.classList.toggle('is-presentation-focus', candidate === card);
+              candidate.parentElement?.classList.toggle('is-presentation-focus', candidate === card);
+            });
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            window.__shoegunPresentation?.openWorkspace(normalized);
+            return true;
+          },
+          stack() {
+            projectGrid.classList.add('is-stacked');
+            projectCards.forEach((candidate) => {
+              candidate.classList.remove('is-presentation-focus');
+              candidate.parentElement?.classList.remove('is-presentation-focus');
+            });
+          },
+          reset() {
+            projectGrid.classList.remove('is-stacked');
+            projectCards.forEach((candidate) => {
+              candidate.classList.remove('is-presentation-focus');
+              candidate.parentElement?.classList.remove('is-presentation-focus');
+            });
+          },
+          openWorkspace(key = 'kepler', sheetUrl = '') {
+            const normalized = String(key || '').toLowerCase();
+            const card = projectCards.find((candidate) => candidate.getAttribute('data-dom-project') === normalized);
+            const projectFrameUrl = card?.querySelector('a.btn-primary')?.getAttribute('href');
+            if (!projectFrameUrl) return false;
+            document.querySelector('.dom-presentation-workspace')?.remove();
+            const workspace = document.createElement('section');
+            workspace.className = 'dom-presentation-workspace';
+            workspace.setAttribute('role', 'dialog');
+            workspace.setAttribute('aria-label', `${normalized} presentation workspace`);
+            const projectTitle = card.querySelector('.card-title')?.textContent?.trim() || 'Project presentation';
+            workspace.innerHTML = `<header><h3>${projectTitle}</h3><div class="dom-presentation-actions"><button type="button" data-presentation-new-tab>Open in new tab</button><button type="button" data-presentation-refresh>Refresh project</button><button type="button" data-presentation-close>Close</button></div></header><div class="dom-presentation-pane"><label>Project view<iframe title="Project presentation" allow="fullscreen"></iframe></label></div>${normalized === 'kepler' ? '<div class="dom-presentation-pane"><label>Public or published Google Sheet<input type="url" placeholder="https://docs.google.com/spreadsheets/d/..." value=""></label><iframe title="Sheet context"></iframe></div>' : '<div class="dom-presentation-pane"><label>Project details</label><p>Use the project view above to explore the live app. Cross-origin apps keep their own permissions and sessions.</p></div>'}`;
+            document.body.appendChild(workspace);
+            const projectFrame = workspace.querySelector('iframe[title="Project presentation"]');
+            const sheetFrame = workspace.querySelector('iframe[title="Sheet context"]');
+            const sheetInput = workspace.querySelector('input');
+            if (projectFrame) projectFrame.src = projectFrameUrl;
+            workspace.querySelector('[data-presentation-new-tab]')?.addEventListener('click', () => window.open(projectFrameUrl, '_blank', 'noopener,noreferrer'));
+            if (sheetInput && sheetUrl) sheetInput.value = sheetUrl;
+            const loadSheet = () => {
+              const value = sheetInput?.value.trim() || '';
+              if (/^https:\/\/docs\.google\.com\/spreadsheets\//i.test(value) && sheetFrame) sheetFrame.src = value;
+            };
+            sheetInput?.addEventListener('change', loadSheet);
+            workspace.querySelector('[data-presentation-refresh]')?.addEventListener('click', () => {
+              if (projectFrame) projectFrame.src = projectFrame.src;
+              loadSheet();
+            });
+            workspace.querySelector('[data-presentation-close]')?.addEventListener('click', () => workspace.remove());
+            loadSheet();
+            return true;
+          }
+        };
+      }
+    })();
+  </script>
+
+  <!-- Services Section -->
+  <section id="services" class="py-5 services-section">
+    <div class="container">
+      <h2 class="mb-5 text-center">Services</h2>
+      <div class="row row-cols-1 row-cols-md-4 g-4">
+        <div class="col">
+          <div class="card h-100 service-card">
+            <div class="card-body">
+              <h5 class="card-title">Data Analysis &amp; Business Consulting</h5>
+              <p class="card-text">Devising advanced analytics strategies and refining business roadmaps to harness data-driven opportunities and fuel sustainable expansion.</p>
+            </div>
+          </div>
+        </div>
+        <div class="col">
+          <div class="card h-100 service-card">
+            <div class="card-body">
+              <h5 class="card-title">AI Consulting &amp; Integration</h5>
+              <p class="card-text">Selecting, shaping, and integrating practical AI systems into real workflows. Related skills include LLM evaluation, prompt and system design, local-first inference, browser AI, data grounding, and API integration.</p>
+            </div>
+          </div>
+        </div>
+        <div class="col">
+          <div class="card h-100 service-card">
+            <div class="card-body">
+              <h5 class="card-title">Web &amp; Software Development</h5>
+              <p class="card-text">Building secure, user-centric applications and websites using modern frameworks to elevate your digital presence.</p>
+            </div>
+          </div>
+        </div>
+        <div class="col">
+          <div class="card h-100 service-card">
+            <div class="card-body">
+              <h5 class="card-title">Automation &amp; Cloud Solutions</h5>
+              <p class="card-text">Designing end-to-end automation scripts, cloud integrations, and processes to reduce overhead, boost efficiency, and scale effortlessly.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Contact Section -->
+  <section id="contact" class="py-5">
+    <div class="container">
+      <h2 class="mb-5 text-center">Contact Me</h2>
+      <div class="row">
+        <div class="col-md-6">
+          <form action="https://formspree.io/f/your-form-id" method="POST">
+            <div class="mb-3">
+              <label for="name" class="form-label">Your Name</label>
+              <input type="text" class="form-control" id="name" name="name" required>
+            </div>
+            <div class="mb-3">
+              <label for="email" class="form-label">Your Email</label>
+              <input type="email" class="form-control" id="email" name="_replyto" required>
+            </div>
+            <div class="mb-3">
+              <label for="message" class="form-label">Your Message</label>
+              <textarea class="form-control" id="message" name="message" rows="5" required></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Send Message</button>
+          </form>
+        </div>
+        <div class="col-md-6">
+          <h5>Get in Touch</h5>
+          <p>Whether you need AI consulting and integration, advanced data engineering, a strategic AI-driven application, or streamlined process automation, I'm ready to help bring your ideas to life. Feel free to reach out for a conversation or a potential collaboration.</p>
+          <ul class="list-unstyled">
+            <li><strong>Email:</strong> <a href="mailto:RichardX13@gmail.com">RichardX13@gmail.com</a></li>
+            <li><strong>Phone:</strong> (415) 697-4734</li>
+            <li><strong>LinkedIn:</strong> <a href="https://www.linkedin.com/in/richardjones2020/" target="_blank">linkedin.com/in/richardjones2020</a></li>
+          </ul>
+        </div>
+      </div>
+      <details id="consultation-booking" class="consultation-panel">
+        <summary><strong>Request a free 20-minute intro consultation</strong></summary>
+        <div class="pt-3">
+          <h3>Bring a practical problem</h3>
+          <p>Tell Richard what you are trying to improve. He can help scope an analytics, AI integration, web, or automation project and suggest a sensible next step.</p>
+          <a class="btn btn-primary" href="mailto:RichardX13@gmail.com?subject=20-minute%20intro%20consultation&amp;body=I%27d%20like%20to%20request%20a%2020-minute%20intro%20consultation.%20Here%27s%20what%20I%27m%20working%20on%3A%20">Request a consultation time</a>
+          <a class="btn btn-outline-secondary" href="mailto:RichardX13@gmail.com?subject=Interview%20request&amp;body=I%27d%20like%20to%20discuss%20an%20interview%20or%20collaboration.%20Here%27s%20the%20context%3A%20">Request an interview</a>
+          <p class="small text-muted mt-2 mb-0">This static GitHub Pages site opens an email request. A public appointment URL or server-side calendar integration can be added later without exposing private credentials.</p>
+        </div>
+      </details>
+      <details class="mt-4">
+        <summary><strong>Client payment options</strong></summary>
+        <div class="pt-3">
+          <p>Payment can be arranged through Cash App, Venmo, Wise, Vigo, YourSafe, Resolute, Bitcoin, or Chime. Ask for an invoice or the current public receive link for the method you prefer.</p>
+          <ul>
+            <li>Only public handles, invoice links, or fresh receive addresses belong on a public portfolio.</li>
+            <li>Never publish passwords, API keys, seed phrases, private keys, or a wallet address reused for unrelated payments.</li>
+            <li>Bitcoin payments should use a fresh invoice-specific receive address or a payment processor link rather than a personal wallet address.</li>
+          </ul>
+          <a class="btn btn-primary" href="mailto:RichardX13@gmail.com?subject=Payment%20instructions%20for%20a%20consultation">Request payment instructions</a>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- Footer Section -->
+  <footer class="text-center py-4">
+    <div class="container">
+      <p>&copy; 2024 Richard Jones. All Rights Reserved.</p>
+      <div class="social-icons">
+        <a href="https://www.linkedin.com/in/richardjones2020/" target="_blank"><i class="fab fa-linkedin"></i></a>
+        <a href="https://github.com/RichardJones2020" target="_blank"><i class="fab fa-github"></i></a>
+        <a href="mailto:RichardX13@gmail.com"><i class="fas fa-envelope"></i></a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Chart.js Script for Dom's deterministic chart face -->
+  <script>
+    const domEyePlugin = {
+      id: "dom-eye-pupils",
+      afterDatasetsDraw(chart) {
+        const context = chart.ctx;
+        const { left, right, top, bottom } = chart.chartArea;
+        const width = right - left;
+        const height = bottom - top;
+        const values = chart.data.datasets[0].data;
+        context.save();
+        values.forEach((value, index) => {
+          const openness = Math.max(.08, Math.min(1, Number(value) / 13));
+          const x = left + width * (index === 0 ? .3 : .7);
+          const y = top + height * .56;
+          const eyeWidth = Math.min(76, width * .27);
+          const eyeHeight = Math.max(4, 42 * openness);
+          context.fillStyle = "#f5fbfa";
+          context.strokeStyle = "#8bd4ce";
+          context.lineWidth = 2;
+          context.beginPath();
+          context.ellipse(x, y, eyeWidth / 2, eyeHeight / 2, 0, 0, Math.PI * 2);
+          context.fill();
+          context.stroke();
+          if (openness > .2) {
+            const pupilRadius = Math.max(4, Math.min(13, eyeHeight * .34));
+            context.fillStyle = "#24555a";
+            context.beginPath();
+            context.arc(x, y + eyeHeight * .05, pupilRadius, 0, Math.PI * 2);
+            context.fill();
+            context.fillStyle = "#ffffff";
+            context.beginPath();
+            context.arc(x - pupilRadius * .35, y - pupilRadius * .4, Math.max(2, pupilRadius * .32), 0, Math.PI * 2);
+            context.fill();
+          }
+        });
+        context.restore();
+      }
+    };
+    const faceMoods = {
+      curious: { eyes: [13, 10], mouth: [3, 8, 3] },
+      happy: { eyes: [11, 11], mouth: [8, 3, 8] },
+      alert: { eyes: [17, 17], mouth: [4, 4, 4] },
+      blink: { eyes: [2, 2], mouth: [3, 4, 3] },
+      wonder: { eyes: [16, 16], mouth: [4, 13, 4] },
+      thinking: { eyes: [9, 12], mouth: [7, 4, 7] },
+      surprised: { eyes: [18, 18], mouth: [2, 16, 2] },
+      concerned: { eyes: [7, 5], mouth: [10, 3, 10] },
+      sleepy: { eyes: [4, 3], mouth: [3, 4, 3] },
+      celebrate: { eyes: [15, 15], mouth: [10, 2, 10] }
+    };
+    let domFaceCharts = null;
+    let domFaceTimer = null;
+    let domThinkingTimer = null;
+    let domSpeechTimer = null;
+    let domMoodTimer = null;
+    let domMoodPulseTimer = null;
+    let domFaceMountTimer = null;
+    let domFaceMountAttempts = 0;
+    let pendingDomFaceMood = null;
+    let pendingDomFaceData = null;
+    const setFaceStatus = (text) => {
+      const status = document.getElementById('dom-face-status');
+      if (status) status.textContent = text;
+    };
+    const setDomFaceMood = (mood) => {
+      pendingDomFaceMood = mood;
+      setFaceStatus(`Mood: ${mood}`);
+      if (!domFaceCharts) return;
+      window.clearInterval(domThinkingTimer);
+      domThinkingTimer = null;
+      window.clearTimeout(domMoodTimer);
+      window.clearInterval(domMoodPulseTimer);
+      domMoodTimer = null;
+      domMoodPulseTimer = null;
+      const next = faceMoods[mood] || faceMoods.curious;
+      document.getElementById('dom-face')?.setAttribute('data-mood', mood);
+      domFaceCharts.eyes.data.datasets[0].data = next.eyes;
+      domFaceCharts.mouth.data.datasets[0].data = next.mouth;
+      domFaceCharts.eyes.update();
+      domFaceCharts.mouth.update();
+      if (mood === 'sleepy') {
+        let phase = 0;
+        domMoodPulseTimer = window.setInterval(() => {
+          phase += 1;
+          const blink = phase % 4 === 0;
+          domFaceCharts.eyes.data.datasets[0].data = blink ? [2, 2] : phase % 2 ? [3, 2] : [4, 3];
+          domFaceCharts.eyes.update('none');
+        }, 850);
+      }
+      if (mood === 'thinking') {
+        let phase = 0;
+        domThinkingTimer = window.setInterval(() => {
+          phase += .72;
+          const pulse = Math.sin(phase) * 2.6;
+          const lift = Math.cos(phase * .7) * 1.2;
+          domFaceCharts.mouth.data.datasets[0].data = [
+            Math.max(1, 5.8 - pulse * .22 + lift),
+            Math.min(19, 6.2 + pulse),
+            Math.max(1, 5.8 - pulse * .22 - lift)
+          ];
+          domFaceCharts.mouth.update('none');
+        }, 190);
+      }
+      if (mood !== 'curious' && mood !== 'happy') {
+        domMoodTimer = window.setTimeout(() => setDomFaceMood('curious'), 6000);
+      }
+    };
+    const setDomFaceData = (data) => {
+      pendingDomFaceData = data;
+      if (!domFaceCharts || !data || !Array.isArray(data.eyes) || !Array.isArray(data.mouth)) return;
+      const eyes = data.eyes.slice(0, 2).map((value) => Math.max(2, Math.min(18, Number(value) || 10)));
+      const mouth = data.mouth.slice(0, 3).map((value) => Math.max(2, Math.min(18, Number(value) || 10)));
+      if (eyes.length !== 2 || mouth.length !== 3) return;
+      domFaceCharts.eyes.data.datasets[0].data = eyes;
+      domFaceCharts.mouth.data.datasets[0].data = mouth;
+      domFaceCharts.eyes.update();
+      domFaceCharts.mouth.update();
+      setFaceStatus(`Data face: ${String(data.label || 'analysis result')}`);
+    };
+    const speakWithFace = (text, done = false) => {
+      if (!domFaceCharts) return;
+      const sample = String(text || '');
+      const letters = (sample.match(/[a-z]/gi) || []).length;
+      const vowels = (sample.match(/[aeiouy]/gi) || []).length;
+      const punctuation = (sample.match(/[,.!?;:]/g) || []).length;
+      const vowelRatio = letters ? vowels / letters : .25;
+      const energy = Math.min(1, .18 + sample.length / 80 + vowelRatio * .55 + punctuation * .04);
+      const curve = Math.sin((sample.length + vowels * 3) * .7) * 2.4;
+      const opening = Math.min(18, 3.5 + energy * 12.5);
+      domFaceCharts.mouth.data.datasets[0].data = [
+        Math.max(1, 7 - opening * .35 + curve),
+        Math.min(19, 3 + opening + curve * .35),
+        Math.max(1, 7 - opening * .35 - curve)
+      ];
+      domFaceCharts.mouth.update('none');
+      window.clearTimeout(domSpeechTimer);
+      if (done) domSpeechTimer = window.setTimeout(() => setDomFaceMood('happy'), 260);
+    };
+    const showFireworks = () => {
+      const layer = document.createElement('div');
+      layer.className = 'dom-fireworks';
+      for (let index = 0; index < 32; index += 1) {
+        const spark = document.createElement('span');
+        const angle = (Math.PI * 2 * index) / 32;
+        const distance = 80 + Math.random() * 180;
+        spark.className = 'dom-firework-spark';
+        spark.style.setProperty('--x', `${35 + Math.random() * 30}%`);
+        spark.style.setProperty('--y', `${25 + Math.random() * 35}%`);
+        spark.style.setProperty('--dx', `${Math.cos(angle) * distance}px`);
+        spark.style.setProperty('--dy', `${Math.sin(angle) * distance}px`);
+        spark.style.setProperty('--hue', `${Math.round(Math.random() * 360)}`);
+        layer.appendChild(spark);
+      }
+      document.body.appendChild(layer);
+      window.setTimeout(() => layer.remove(), 1600);
+    };
+    const clearHotdogRain = () => document.getElementById('dom-hotdog-rain')?.remove();
+    const showHotdogRain = () => {
+      clearHotdogRain();
+      const layer = document.createElement('div');
+      layer.id = 'dom-hotdog-rain';
+      layer.className = 'dom-hotdog-rain';
+      for (let index = 0; index < 28; index += 1) {
+        const hotdog = document.createElement('span');
+        hotdog.className = 'dom-hotdog';
+        hotdog.setAttribute('role', 'img');
+        hotdog.setAttribute('aria-label', 'hotdog');
+        hotdog.textContent = String.fromCodePoint(0x1f32d);
+        hotdog.style.setProperty('--x', `${Math.round(Math.random() * 96)}%`);
+        hotdog.style.setProperty('--delay', `${(Math.random() * 2.8).toFixed(2)}s`);
+        hotdog.style.setProperty('--duration', `${(4.8 + Math.random() * 2.6).toFixed(2)}s`);
+        hotdog.style.setProperty('--drift', `${Math.round(-90 + Math.random() * 180)}px`);
+        hotdog.style.setProperty('--start-rotation', `${Math.round(-30 + Math.random() * 60)}deg`);
+        hotdog.style.setProperty('--end-rotation', `${Math.round(300 + Math.random() * 420)}deg`);
+        layer.appendChild(hotdog);
+      }
+      document.body.appendChild(layer);
+      window.setTimeout(clearHotdogRain, 9000);
+    };
+    const mountDomFace = () => {
+      const host = document.getElementById('dom-face-host');
+      const eyes = document.getElementById('chart2');
+      const mouth = document.getElementById('chart1');
+      if (domFaceCharts || !host || !eyes || !mouth) return;
+      if (!window.Chart) {
+        if (domFaceMountAttempts < 50) {
+          domFaceMountAttempts += 1;
+          window.clearTimeout(domFaceMountTimer);
+          domFaceMountTimer = window.setTimeout(mountDomFace, 100);
+        }
+        return;
+      }
+      domFaceMountAttempts = 0;
+      host.hidden = false;
+      domFaceCharts = {
+        mouth: new Chart(mouth.getContext('2d'), {
+          type: 'line',
+          data: { labels: ['L', 'C', 'R'], datasets: [{ data: faceMoods.curious.mouth, borderColor: '#ef8354', backgroundColor: 'rgba(239, 131, 84, 0.16)', pointRadius: 0, borderWidth: 5, tension: .5, fill: true }] },
+          options: { responsive: true, maintainAspectRatio: false, animation: { duration: 500 }, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false, min: 0, max: 20 } } }
+        }),
+        eyes: new Chart(eyes.getContext('2d'), {
+          type: 'bar',
+          data: { labels: ['Left', 'Right'], datasets: [{ data: faceMoods.curious.eyes, backgroundColor: ['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)'], borderColor: 'rgba(0, 0, 0, 0)', borderWidth: 0, borderRadius: 36, barThickness: 86, maxBarThickness: 86 }] },
+          options: { responsive: true, maintainAspectRatio: false, animation: { duration: 500 }, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false, min: 0, max: 20 } } },
+          plugins: [domEyePlugin]
+        })
+      };
+      window.__shoegunDomFace = {
+        setMood(mood) { window.clearInterval(domFaceTimer); domFaceTimer = null; setDomFaceMood(mood); },
+        animate(sequence = ['curious', 'wonder', 'happy', 'blink', 'curious']) {
+          window.clearInterval(domFaceTimer);
+          const moods = sequence.filter((mood) => faceMoods[mood]);
+          let index = 0;
+          setDomFaceMood(moods[index] || 'curious');
+          domFaceTimer = window.setInterval(() => { index = (index + 1) % (moods.length || 1); setDomFaceMood(moods[index] || 'curious'); }, 900);
+        },
+        stop() { window.clearInterval(domFaceTimer); domFaceTimer = null; },
+        speak(text, done = false) { speakWithFace(text, done); },
+        setData(data) { setDomFaceData(data); },
+        moods() { return Object.keys(faceMoods); }
+      };
+      window.__shoegunDomEffects = { fireworks: showFireworks, hotdogRain: showHotdogRain, stopHotdogRain: clearHotdogRain };
+      if (pendingDomFaceData) setDomFaceData(pendingDomFaceData);
+      if (pendingDomFaceMood) setDomFaceMood(pendingDomFaceMood);
+      else window.__shoegunDomFace.animate();
+    };
+    window.addEventListener('message', (event) => {
+      const agentFrame = document.querySelector('#browser-agent iframe');
+      if (!agentFrame || event.source !== agentFrame.contentWindow) return;
+      if (event.data?.type === 'shoegun-browser-agent-state' && event.data.state === 'ready') mountDomFace();
+      if (event.data?.type === 'shoegun-dom-face-mood' && typeof event.data.mood === 'string') {
+        pendingDomFaceMood = event.data.mood;
+        mountDomFace();
+        window.__shoegunDomFace?.setMood(event.data.mood);
+      }
+      if (event.data?.type === 'shoegun-dom-face-data') {
+        pendingDomFaceData = event.data.data;
+        mountDomFace();
+        window.__shoegunDomFace?.setData(event.data.data);
+      }
+      if (event.data?.type === 'shoegun-dom-face-speech') {
+        mountDomFace();
+        window.__shoegunDomFace?.speak(event.data.text, event.data.done === true);
+      }
+    });
+  </script>
 </body>
 </html>

@@ -31,9 +31,38 @@ export function normalizeUsage({ promptTokens, completionTokens, inputChars, out
   };
 }
 
+export function normalizePerformance({
+  promptTokens,
+  completionTokens,
+  promptEvalDurationNs,
+  evalDurationNs,
+  loadDurationNs
+} = {}) {
+  const promptEvalDurationMs = Number.isFinite(promptEvalDurationNs) ? promptEvalDurationNs / 1e6 : 0;
+  const evalDurationMs = Number.isFinite(evalDurationNs) ? evalDurationNs / 1e6 : 0;
+  const loadDurationMs = Number.isFinite(loadDurationNs) ? loadDurationNs / 1e6 : 0;
+  return {
+    promptEvalDurationMs,
+    evalDurationMs,
+    loadDurationMs,
+    promptTokensPerSecond: promptEvalDurationMs > 0 && Number.isFinite(promptTokens)
+      ? (promptTokens / promptEvalDurationMs) * 1000
+      : null,
+    completionTokensPerSecond: evalDurationMs > 0 && Number.isFinite(completionTokens)
+      ? (completionTokens / evalDurationMs) * 1000
+      : null,
+    exact: promptEvalDurationMs > 0 || evalDurationMs > 0
+  };
+}
+
 export async function recordInference(runtimeDir, event) {
   const capturedAt = new Date().toISOString();
   const usage = normalizeUsage(event.usage);
+  const performance = normalizePerformance({
+    promptTokens: usage.promptTokens,
+    completionTokens: usage.completionTokens,
+    ...event.performance
+  });
   const normalized = {
     id: `${Date.now()}-${process.pid}-${Math.random().toString(16).slice(2, 8)}`,
     capturedAt,
@@ -44,7 +73,8 @@ export async function recordInference(runtimeDir, event) {
     taskId: event.taskId || null,
     durationMs: Math.max(0, Number(event.durationMs || 0)),
     status: event.status || "ok",
-    usage
+    usage,
+    performance
   };
 
   await fs.mkdir(runtimeDir, { recursive: true });
@@ -67,6 +97,16 @@ export async function recordInference(runtimeDir, event) {
     target.durationMs = (target.durationMs || 0) + normalized.durationMs;
     target.exactCalls = (target.exactCalls || 0) + (usage.exact ? 1 : 0);
     target.estimatedCalls = (target.estimatedCalls || 0) + (usage.exact ? 0 : 1);
+    target.promptEvalDurationMs = (target.promptEvalDurationMs || 0) + performance.promptEvalDurationMs;
+    target.evalDurationMs = (target.evalDurationMs || 0) + performance.evalDurationMs;
+    target.loadDurationMs = (target.loadDurationMs || 0) + performance.loadDurationMs;
+    target.performanceCalls = (target.performanceCalls || 0) + (performance.exact ? 1 : 0);
+    target.promptTokensPerSecond = target.promptEvalDurationMs > 0
+      ? (target.promptTokens / target.promptEvalDurationMs) * 1000
+      : null;
+    target.completionTokensPerSecond = target.evalDurationMs > 0
+      ? (target.completionTokens / target.evalDurationMs) * 1000
+      : null;
     target.lastUsedAt = capturedAt;
   };
 

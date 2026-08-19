@@ -22,6 +22,69 @@ function unwrapJson(raw: string) {
     : trimmed;
 }
 
+const filterOperators: Record<string, string> = {
+  equals: 'eq',
+  equal: 'eq',
+  not_equals: 'neq',
+  'not-equals': 'neq',
+  greater_than: 'gt',
+  'greater-than': 'gt',
+  greater_than_or_equal: 'gte',
+  'greater-than-or-equal': 'gte',
+  less_than: 'lt',
+  'less-than': 'lt',
+  less_than_or_equal: 'lte',
+  'less-than-or-equal': 'lte',
+  includes: 'contains'
+};
+
+function normalizePlanCandidate(candidate: unknown): unknown {
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return candidate;
+  const plan = { ...(candidate as Record<string, unknown>) };
+
+  if (typeof plan.groupBy === 'string') plan.groupBy = [plan.groupBy];
+  if (typeof plan.limit === 'string' && /^\d+$/.test(plan.limit)) plan.limit = Number(plan.limit);
+
+  if (Array.isArray(plan.filters)) {
+    plan.filters = plan.filters.flatMap((filter) => {
+      if (!filter || typeof filter !== 'object') return [];
+      const item = { ...(filter as Record<string, unknown>) };
+      if (typeof item.operator === 'string') item.operator = filterOperators[item.operator] || item.operator;
+      return typeof item.field === 'string' && typeof item.operator === 'string' && 'value' in item ? [item] : [];
+    });
+  } else if (plan.filters !== undefined) {
+    delete plan.filters;
+  }
+
+  if (Array.isArray(plan.sort)) {
+    plan.sort = plan.sort.flatMap((sort) => {
+      if (!sort || typeof sort !== 'object') return [];
+      const item = { ...(sort as Record<string, unknown>) };
+      if (typeof item.direction === 'string') {
+        item.direction = {
+          ascending: 'asc',
+          increasing: 'asc',
+          'a-z': 'asc',
+          descending: 'desc',
+          decreasing: 'desc',
+          'z-a': 'desc'
+        }[item.direction.toLowerCase()] || item.direction.toLowerCase();
+      }
+      return typeof item.field === 'string' && (item.direction === 'asc' || item.direction === 'desc') ? [item] : [];
+    });
+  } else if (plan.sort !== undefined) {
+    delete plan.sort;
+  }
+
+  if (plan.chart && typeof plan.chart === 'object' && !Array.isArray(plan.chart)) {
+    const chart = { ...(plan.chart as Record<string, unknown>) };
+    if (chart.type === 'column' || chart.type === 'column chart') chart.type = 'bar';
+    plan.chart = chart;
+  }
+
+  return plan;
+}
+
 export function parseModelPlan(raw: string): StructuredAnalysisPlan {
   let candidate: unknown;
   try {
@@ -31,7 +94,7 @@ export function parseModelPlan(raw: string): StructuredAnalysisPlan {
   }
 
   try {
-    return validateAnalysisPlan(candidate);
+    return validateAnalysisPlan(normalizePlanCandidate(candidate));
   } catch (error) {
     if (error instanceof AnalysisPlanValidationError) {
       const detail = error.issues

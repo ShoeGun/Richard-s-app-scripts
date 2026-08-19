@@ -5,6 +5,7 @@ import type {
 } from '../workers/analytics.types';
 import type { StructuredAnalysisPlan } from './analysis-plan-schema';
 import type { AnalysisResult } from './deterministic-analysis';
+import type { UploadedDataset } from './upload';
 
 type PendingRequest = {
   resolve: (response: AnalyticsResponse) => void;
@@ -48,6 +49,15 @@ export class AnalyticsClient {
       type: 'load-dataset',
       requestId: crypto.randomUUID(),
       datasetUrl
+    });
+    if (response.type !== 'dataset-loaded') throw new Error('Unexpected dataset load response.');
+  }
+
+  async loadUploadedDataset(uploadedDataset: UploadedDataset) {
+    const response = await this.request({
+      type: 'load-dataset',
+      requestId: crypto.randomUUID(),
+      uploadedDataset
     });
     if (response.type !== 'dataset-loaded') throw new Error('Unexpected dataset load response.');
   }

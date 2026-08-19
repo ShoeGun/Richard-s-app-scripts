@@ -18,8 +18,9 @@ class MockWorker {
           data: {
             type: 'model-ready',
             model: 'test-browser-model',
-            device: 'webgpu',
-            cached: true
+            profile: 'desktop',
+            device: request.device ?? 'webgpu',
+            cache: 'browser-cache-enabled'
           }
         } as MessageEvent<ModelWorkerResponse>);
       });
@@ -111,7 +112,8 @@ describe('App', () => {
   it('preserves the portfolio identity and local AI entry point', () => {
     render(<App />);
 
-    expect(screen.getByRole('heading', { name: /richard jones/i })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /shaping data/i })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /richard jones/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /launch local ai/i })).toBeTruthy();
   });
 
@@ -122,9 +124,9 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: /launch local ai/i }));
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/ask the browser model/i)).toBeTruthy();
+      expect(screen.getByLabelText(/what should the agent analyze/i)).toBeTruthy();
     });
-    fireEvent.click(screen.getByRole('button', { name: /run on webgpu/i }));
+    fireEvent.click(screen.getByRole('button', { name: /analyze and visualize/i }));
     await waitFor(() => {
       expect(screen.getByRole('table', { name: /local ai analysis result/i })).toBeTruthy();
     });
@@ -137,22 +139,22 @@ describe('App', () => {
     MockWorker.invalidPlan = true;
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: /launch local ai/i }));
-    await waitFor(() => expect(screen.getByLabelText(/ask the browser model/i)).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: /run on webgpu/i }));
+    await waitFor(() => expect(screen.getByLabelText(/what should the agent analyze/i)).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /analyze and visualize/i }));
 
     await waitFor(() => {
       expect(screen.getByRole('alert').textContent).toMatch(/unsupported plan/i);
     });
   });
 
-  it('explains when WebGPU is unavailable without creating the model worker', async () => {
+  it('falls back to the browser CPU when WebGPU is unavailable', async () => {
     Object.defineProperty(navigator, 'gpu', { configurable: true, value: undefined });
     render(<App />);
 
     fireEvent.click(screen.getByRole('button', { name: /launch local ai/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole('alert').textContent).toMatch(/webgpu is unavailable/i);
+      expect(screen.getByLabelText(/what should the agent analyze/i)).toBeTruthy();
     });
   });
 

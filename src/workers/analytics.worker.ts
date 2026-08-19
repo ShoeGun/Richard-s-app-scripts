@@ -36,7 +36,7 @@ const duckDbBundles: duckdb.DuckDBBundles = {
 };
 
 function defaultDatasetUrl() {
-  return new URL(`${import.meta.env.BASE_URL}data/demo.csv`, self.location.origin).href;
+  return new URL('../data/demo.csv', new URL(import.meta.env.BASE_URL, self.location.origin)).href;
 }
 
 function analyticsError(code: AnalyticsErrorCode, error: unknown) {
@@ -91,9 +91,30 @@ async function loadDataset(datasetUrl = defaultDatasetUrl()) {
     );
     await connection.query(`
       CREATE OR REPLACE TABLE demo AS
-      SELECT * FROM read_csv_auto('${DATASET_FILE_NAME}', header = true)
+      SELECT * FROM read_csv_auto('${DATASET_FILE_NAME}', header = true, delim = ',', strict_mode = false)
     `);
     datasetLoaded = true;
+  } finally {
+    await connection.close();
+  }
+}
+
+async function loadUploadedDataset(fileName: string, format: 'csv' | 'json', content: string) {
+  const db = await initializeDuckDb();
+  const connection = await db.connect();
+  const registeredName = format === 'csv' ? 'upload.csv' : 'upload.json';
+  try {
+    await db.registerFileText(registeredName, content);
+    const reader = format === 'csv'
+      ? `read_csv_auto('${registeredName}', header = true, delim = ',', strict_mode = false)`
+      : `read_json_auto('${registeredName}', format = 'array')`;
+    await connection.query(`CREATE OR REPLACE TABLE demo AS SELECT * FROM ${reader}`);
+    datasetLoaded = true;
+  } catch (error) {
+    throw Object.assign(
+      new Error(`Could not read ${fileName}: ${error instanceof Error ? error.message : String(error)}`),
+      { cause: error }
+    );
   } finally {
     await connection.close();
   }
@@ -161,7 +182,15 @@ async function handleRequest(request: AnalyticsRequest): Promise<AnalyticsRespon
         await initializeDuckDb();
         return { type: 'initialized', requestId: request.requestId, ok: true };
       case 'load-dataset':
-        await loadDataset(request.datasetUrl);
+        if (request.uploadedDataset) {
+          await loadUploadedDataset(
+            request.uploadedDataset.fileName,
+            request.uploadedDataset.format,
+            request.uploadedDataset.content
+          );
+        } else {
+          await loadDataset(request.datasetUrl);
+        }
         return { type: 'dataset-loaded', requestId: request.requestId, ok: true };
       case 'inspect-schema':
         return {

@@ -1,0 +1,17 @@
+{
+  "runtime": "llama.cpp",
+  "modelFamily": "Kimi-K2.5",
+  "sourceRepository": "bartowski/moonshotai_Kimi-K2.5-GGUF",
+  "quantization": "IQ2_XXS",
+  "estimatedSizeGiB": 246,
+  "modelRootEnv": "LARGE_MODEL_ROOT",
+  "modelFilePattern": "*Kimi-K2.5*IQ2_XXS*.gguf",
+  "mmap": true,
+  "mlock": false,
+  "gpuLayers": 8,
+  "contextTokens": 4096,
+  "serverHost": "127.0.0.1",
+  "serverPort": 1235,
+  "autoRoute": false,
+  "notes": "Opt-in experiment only. Disk-backed mmap is not a substitute for RAM; expect very low throughput on the current 64 GB RAM / RTX 3070 host."
+}

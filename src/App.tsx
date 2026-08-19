@@ -1,17 +1,20 @@
 import React from 'react';
 
 import { AnalysisResultView } from './components/AnalysisResultView';
+import { GoogleSheetPanel } from './components/GoogleSheetPanel';
 import { createAnalyticsClient } from './lib/analytics';
 import type { AnalysisResult } from './lib/deterministic-analysis';
-import { LocalAiClient } from './lib/local-ai';
+import { browserModelForCurrentDevice, isMobileBrowser, LocalAiClient } from './lib/local-ai';
 import { parseModelPlan } from './lib/model-plan';
-import { BROWSER_MODEL_ID, type ModelWorkerResponse } from './workers/model.types';
+import type { UploadedDataset } from './lib/upload';
+import profileImage from '../profile1.jpg';
+import type { ModelDevice, ModelWorkerResponse } from './workers/model.types';
 import type { SchemaColumn } from './workers/analytics.types';
 
 type AnalyticsState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'ready'; schema: SchemaColumn[] }
+  | { status: 'ready'; schema: SchemaColumn[]; source: 'demo' | 'sheet' }
   | { status: 'error'; message: string };
 
 type LocalAiState =
@@ -28,11 +31,31 @@ const formatBytes = (value: number | null) => {
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
 };
 
+const defaultPrompt = 'Group the rows by a useful category, count them, sort the counts descending, and choose an appropriate chart.';
+
+const promptForSchema = (request: string, schema: SchemaColumn[]) => {
+  const fields = schema.length > 0
+    ? schema.map((column) => `${column.name} (${column.type})`).join(', ')
+    : 'id (number), name (text), age (number), salary (number)';
+  return [
+    'You are the browser analytics agent for Richard Jones portfolio.',
+    'Return only one valid JSON analysis plan. Do not return SQL, JavaScript, markdown, or explanations.',
+    'Allowed plan fields: filters, groupBy, aggregations, sort, limit, chart.',
+    'Allowed aggregation operators: count, sum, avg, min, max. Allowed chart types: table, bar, line, scatter, auto.',
+    `Dataset columns: ${fields}.`,
+    `User request: ${request}`
+  ].join('\n');
+};
+
 const App = () => {
+  const mobileBrowser = isMobileBrowser();
+  const browserModel = browserModelForCurrentDevice();
   const [analytics, setAnalytics] = React.useState<AnalyticsState>({ status: 'idle' });
   const [localAi, setLocalAi] = React.useState<LocalAiState>({ status: 'idle' });
-  const [prompt, setPrompt] = React.useState('Group people by age, count rows as people, sort by people descending, and use a bar chart with age on x and people on y.');
+  const [prompt, setPrompt] = React.useState(defaultPrompt);
+  const [activeDataset, setActiveDataset] = React.useState<UploadedDataset | null>(null);
   const localAiClient = React.useRef<LocalAiClient | null>(null);
+  const [modelDevice, setModelDevice] = React.useState<ModelDevice | null>(null);
 
   React.useEffect(() => () => localAiClient.current?.dispose(), []);
 
@@ -41,13 +64,10 @@ const App = () => {
     const client = createAnalyticsClient();
     try {
       const plan = parseModelPlan(raw);
-      await client.loadDataset();
+      if (activeDataset) await client.loadUploadedDataset(activeDataset);
+      else await client.loadDataset();
       const result = await client.executePlan(plan);
-      setLocalAi({
-        status: 'ready',
-        output: JSON.stringify(plan, null, 2),
-        result
-      });
+      setLocalAi({ status: 'ready', output: JSON.stringify(plan, null, 2), result });
     } catch (error) {
       setLocalAi({
         status: 'error',
@@ -60,13 +80,9 @@ const App = () => {
 
   const handleModelMessage = (message: ModelWorkerResponse) => {
     if (message.type === 'model-progress') {
-      setLocalAi({
-        status: 'loading',
-        progress: message.progress,
-        loaded: message.loaded,
-        total: message.total
-      });
+      setLocalAi({ status: 'loading', progress: message.progress, loaded: message.loaded, total: message.total });
     } else if (message.type === 'model-ready') {
+      setModelDevice(message.device);
       setLocalAi({ status: 'ready', output: '' });
     } else if (message.type === 'generation-started') {
       setLocalAi({ status: 'generating', output: '' });
@@ -84,6 +100,7 @@ const App = () => {
 
   const launchLocalAi = async () => {
     setLocalAi({ status: 'checking' });
+    setModelDevice(null);
     localAiClient.current ??= new LocalAiClient(handleModelMessage);
     try {
       await localAiClient.current.load();
@@ -97,7 +114,8 @@ const App = () => {
 
   const runLocalAi = () => {
     try {
-      localAiClient.current?.generate(prompt);
+      const schema = analytics.status === 'ready' ? analytics.schema : [];
+      localAiClient.current?.generate(promptForSchema(prompt, schema));
     } catch (error) {
       setLocalAi({
         status: 'error',
@@ -110,156 +128,184 @@ const App = () => {
     setAnalytics({ status: 'loading' });
     const client = createAnalyticsClient();
     try {
+      setActiveDataset(null);
       await client.loadDataset();
-      setAnalytics({ status: 'ready', schema: await client.inspectSchema() });
+      setAnalytics({ status: 'ready', source: 'demo', schema: await client.inspectSchema() });
     } catch (error) {
-      setAnalytics({
-        status: 'error',
-        message: error instanceof Error ? error.message : String(error)
-      });
+      setAnalytics({ status: 'error', message: error instanceof Error ? error.message : String(error) });
     } finally {
       client.dispose();
     }
   };
 
+  const inspectSharedSheet = async (dataset: UploadedDataset) => {
+    const client = createAnalyticsClient();
+    try {
+      await client.loadUploadedDataset(dataset);
+      const schema = await client.inspectSchema();
+      setActiveDataset(dataset);
+      setAnalytics({ status: 'ready', source: 'sheet', schema });
+      return schema;
+    } finally {
+      client.dispose();
+    }
+  };
+
+  const isLoadingModel = localAi.status === 'checking' || localAi.status === 'loading';
+  const canRunModel = localAi.status === 'ready';
+  const agentRunning = localAi.status === 'generating' || localAi.status === 'executing';
+
   return (
     <main>
-      <header>
-        <nav aria-label="Main navigation">
-          <div className="nav-container">
-            <div className="logo">ShoeGun</div>
-            <ul>
-              <li><a href="#about">About</a></li>
-              <li><a href="#projects">Projects</a></li>
-              <li><a href="#analytics">Analytics</a></li>
-              <li><a href="#contact">Contact</a></li>
-            </ul>
-          </div>
+      <header className="site-header" id="home">
+        <nav className="navbar" aria-label="Main navigation">
+          <a className="navbar-brand" href="#home">Richard Jones</a>
+          <ul className="navbar-nav">
+            <li><a href="#about">About Me</a></li>
+            <li><a href="#projects">Projects</a></li>
+            <li><a href="#timeline">Work History</a></li>
+            <li><a href="#analytics">Analytics</a></li>
+            <li><a href="#services">Services</a></li>
+            <li><a href="#contact">Contact</a></li>
+          </ul>
         </nav>
-        <section aria-labelledby="portfolio-title">
-          <h1 id="portfolio-title">Richard Jones</h1>
-          <p>Building applied analytics, automation, and local AI systems with a bias toward useful, inspectable software.</p>
-          <button type="button" onClick={launchLocalAi} disabled={['checking', 'loading'].includes(localAi.status)}>
-            {localAi.status === 'checking' ? 'Checking WebGPU' : localAi.status === 'loading' ? 'Loading local AI' : 'Launch local AI'}
-          </button>
+
+        <section className="hero-section" aria-labelledby="portfolio-title">
+          <div className="container hero-copy">
+            <p className="eyebrow eyebrow-light">ANALYTICS &amp; ENGINEERING PORTFOLIO</p>
+            <h1 id="portfolio-title">Shaping Data.<br />Driving Innovation.</h1>
+            <p className="hero-lede">Unifying data engineering, advanced analytics, and operational strategy to modernize business solutions.</p>
+            <p>Explore my portfolio of dynamic analytics, AI integrations, and transformative engineering projects.</p>
+            <div className="hero-actions">
+              <a className="button button-secondary" href="#analytics">Explore the analytics agent</a>
+              <button type="button" className="button button-primary" onClick={launchLocalAi} disabled={isLoadingModel}>
+                {localAi.status === 'checking' ? 'Checking browser acceleration' : localAi.status === 'loading' ? 'Loading local AI' : 'Launch local AI'}
+              </button>
+            </div>
+          </div>
         </section>
       </header>
 
-      <section id="local-ai" className="section local-ai-panel" aria-labelledby="local-ai-title">
-        <div>
-          <p className="eyebrow">BROWSER-NATIVE WEBGPU</p>
-          <h2 id="local-ai-title">Local AI workspace</h2>
-          <p>{BROWSER_MODEL_ID} runs in a dedicated worker. Model files download only after launch and are retained in the browser cache.</p>
-        </div>
-
-        {localAi.status === 'idle' && (
-          <p className="muted">Launch the model above when you are ready to download it.</p>
-        )}
-        {localAi.status === 'checking' && (
-          <p className="loading" role="status">Checking browser acceleration...</p>
-        )}
-        {localAi.status === 'loading' && (
-          <div className="model-progress" role="status" aria-live="polite">
-            <progress max="100" value={localAi.progress ?? undefined} />
-            <span>
-              {localAi.progress === null ? 'Checking cache and model files' : `${Math.round(localAi.progress)}%`}
-              {localAi.loaded && localAi.total ? ` - ${formatBytes(localAi.loaded)} of ${formatBytes(localAi.total)}` : ''}
-            </span>
+      <section id="about" className="portfolio-section about-section">
+        <div className="container two-column">
+          <div className="portrait-wrap"><img src={profileImage} alt="Richard Jones" /></div>
+          <div>
+            <p className="eyebrow">ABOUT ME</p>
+            <h2>Operations, data, and useful software.</h2>
+            <p>
+              Hello! I&apos;m <strong>Richard Jones</strong> — an Operations Specialist, Data Engineer,
+              Data Analyst, and full-stack developer who thrives on harnessing data to push boundaries
+              and drive efficiency.
+            </p>
+            <p>
+              From large-scale operations and compliance to AI-driven solutions and real-time analytics,
+              my background covers banking, government, and freelance consulting.
+            </p>
+            <a className="text-link" href="https://www.linkedin.com/in/richardjones2020/" target="_blank" rel="noreferrer">Connect with me on LinkedIn</a>
           </div>
-        )}
-        {localAi.status === 'error' && (
-          <p className="error-state" role="alert">{localAi.message}</p>
-        )}
-        {(localAi.status === 'ready' || localAi.status === 'generating' || localAi.status === 'executing') && (
-          <div className="model-console">
-            <label htmlFor="local-ai-prompt">Ask the browser model</label>
-            <textarea
-              id="local-ai-prompt"
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              rows={4}
-              disabled={localAi.status === 'generating' || localAi.status === 'executing'}
-            />
-            <button
-              type="button"
-              onClick={runLocalAi}
-              disabled={localAi.status === 'generating' || localAi.status === 'executing' || !prompt.trim()}
-            >
-              {localAi.status === 'generating'
-                ? 'Generating locally'
-                : localAi.status === 'executing'
-                  ? 'Validating plan'
-                  : 'Run on WebGPU'}
-            </button>
-            {localAi.output && <output aria-live="polite">{localAi.output}</output>}
-            {localAi.status === 'ready' && localAi.result && (
-              <AnalysisResultView result={localAi.result} />
-            )}
+        </div>
+      </section>
+
+      <section id="projects" className="portfolio-section section-muted">
+        <div className="container">
+          <div className="section-heading"><p className="eyebrow">SELECTED WORK</p><h2>Featured Projects</h2></div>
+          <div className="project-grid">
+            <article className="project-card">
+              <p className="card-kicker">CMS / GOOGLE APPS SCRIPT</p>
+              <h3>Henry&apos;s Super Scoops CMS</h3>
+              <p>A streamlined CMS built with Google Sheets and Apps Script, automating appointments, resource allocation, and Calendar sync for a free dessert-themed brand concept.</p>
+              <div className="card-links"><a href="https://shoegun.github.io/Henry-s/learn-more.html" target="_blank" rel="noreferrer">Learn more</a><a href="https://shoegun.github.io/Henry-s/" target="_blank" rel="noreferrer">View project</a></div>
+            </article>
+            <article className="project-card">
+              <p className="card-kicker">GEOSPATIAL ANALYTICS</p>
+              <h3>Kepler in a Google Web App</h3>
+              <p>Demonstrates the extensibility of Kepler.gl within Google Web Apps, with dynamic data loading from Sheets and interactive mapping.</p>
+              <div className="card-links"><a href="https://script.google.com/macros/s/AKfycbyCSMyu_3Knjv0sq-UBT7SdF3fV9TfkILObnqfiauo5LgqpV5i_WbmtHU6AqWFVmtLj/exec" target="_blank" rel="noreferrer">View project</a></div>
+            </article>
+            <article className="project-card">
+              <p className="card-kicker">ROUTE PLANNING</p>
+              <h3>Altitude Directions App</h3>
+              <p>A specialized route-planning tool that factors altitude thresholds, assisting divers, aviators, and altitude-sensitive users in safe and efficient route mapping.</p>
+              <div className="card-links"><a href="https://script.google.com/macros/s/AKfycbynli9bhc36gqUIQmKtqnxa-jOcYmLrqsLsGNwGmuS2cdtUW7OjEyfUVQVJvl9_s9V5xw/exec" target="_blank" rel="noreferrer">View project</a></div>
+            </article>
           </div>
-        )}
-      </section>
-
-      <section id="analytics" className="section analytics-panel">
-        <div>
-          <h2>Analytics Demo</h2>
-          <p>Inspect the bundled demo dataset through a DuckDB-Wasm worker.</p>
-          <button type="button" onClick={loadDemoSchema} disabled={analytics.status === 'loading'}>
-            {analytics.status === 'loading' ? 'Loading schema' : 'Load demo dataset'}
-          </button>
-        </div>
-
-        {analytics.status === 'idle' && (
-          <p className="muted">Schema results will appear here after the worker loads the CSV.</p>
-        )}
-
-        {analytics.status === 'loading' && (
-          <p className="loading" role="status" aria-live="polite">Loading analytics worker...</p>
-        )}
-
-        {analytics.status === 'error' && (
-          <p className="error-state" role="alert">{analytics.message}</p>
-        )}
-
-        {analytics.status === 'ready' && (
-          <table aria-label="Demo dataset schema">
-            <thead>
-              <tr>
-                <th scope="col">Column</th>
-                <th scope="col">Type</th>
-                <th scope="col">Nullable</th>
-              </tr>
-            </thead>
-            <tbody>
-              {analytics.schema.map((column) => (
-                <tr key={column.name}>
-                  <td>{column.name}</td>
-                  <td>{column.type}</td>
-                  <td>{column.nullable ? 'Yes' : 'No'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      <section id="about" className="section">
-        <h2>About</h2>
-        <p>Analytics & Engineering Portfolio</p>
-      </section>
-
-      <section id="projects" className="section">
-        <h2>Projects</h2>
-        <div className="project-grid">
-          <div className="project-card">Project 1</div>
-          <div className="project-card">Project 2</div>
-          <div className="project-card">Project 3</div>
         </div>
       </section>
 
-      <section id="contact" className="section">
-        <h2>Contact</h2>
-        <p>Email: richard@example.com | LinkedIn: linkedin.com/in/richardjones</p>
+      <section id="timeline" className="portfolio-section">
+        <div className="container">
+          <div className="section-heading"><p className="eyebrow">EXPERIENCE</p><h2>Work History Timeline</h2></div>
+          <p className="section-intro">A visual overview of my professional journey from data engineering and operational leadership to technical consulting and AI-driven projects.</p>
+          <iframe
+            className="timeline-frame"
+            src="https://script.google.com/macros/s/AKfycbxOJtfZOW1WPxzQQ1lwAK7x_TkZGSRBJOPbgwViDQsnpNxAgynokJHDr7Xwh6SS6uJc/exec?v=2"
+            loading="lazy"
+            title="Work History Timeline"
+          />
+        </div>
       </section>
+
+      <section id="analytics" className="portfolio-section analytics-section">
+        <div className="container">
+          <div className="section-heading"><p className="eyebrow">BROWSER-NATIVE WEBGPU</p><h2>Analytics, with a local agent.</h2></div>
+          <p className="section-intro">Connect an openly shared Google Sheet, ask a question in plain language, and let a small model propose a safe analysis plan. DuckDB-Wasm executes the validated plan in your browser.</p>
+          <div className="agent-layout">
+            <div className="agent-console" id="sheet-agent">
+              <div className="agent-console-header">
+                <div><span className="status-dot" aria-hidden="true" /> <strong>Local browser agent</strong></div>
+                <span className="model-label">{browserModel.id}</span>
+              </div>
+              <p className="agent-note">No model files download until you launch it. {mobileBrowser ? 'A smaller mobile profile is selected for this device.' : 'The fullest experience is optimized for a computer with WebGPU.'} The browser cache can reuse the model on later visits.</p>
+              {localAi.status === 'idle' && <p className="muted">Launch local AI above to activate the analysis workspace.</p>}
+              {localAi.status === 'checking' && <p className="loading" role="status">Checking browser acceleration...</p>}
+              {localAi.status === 'loading' && (
+                <div className="model-progress" role="status" aria-live="polite">
+                  <progress max="100" value={localAi.progress ?? undefined} />
+                  <span>{localAi.progress === null ? 'Checking cache and model files' : `${Math.round(localAi.progress)}%`} {localAi.loaded && localAi.total ? `· ${formatBytes(localAi.loaded)} of ${formatBytes(localAi.total)}` : ''}</span>
+                </div>
+              )}
+              {localAi.status === 'error' && <p className="error-state" role="alert">{localAi.message}</p>}
+              {(canRunModel || localAi.status === 'generating' || localAi.status === 'executing') && (
+                <div className="model-console">
+                  {canRunModel && <p className="cache-state" role="status">Ready locally on {modelDevice === 'wasm' ? 'CPU WebAssembly fallback' : 'WebGPU'}. Your data stays in this browser.</p>}
+                  <label htmlFor="local-ai-prompt">What should the agent analyze?</label>
+                  <textarea id="local-ai-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={4} disabled={!canRunModel || agentRunning} />
+                  <button type="button" className="button button-primary" onClick={runLocalAi} disabled={!canRunModel || !prompt.trim() || agentRunning}>
+                    {localAi.status === 'generating' ? 'Generating locally' : localAi.status === 'executing' ? 'Validating plan' : 'Analyze and visualize'}
+                  </button>
+                  {localAi.output && <output aria-live="polite">{localAi.output}</output>}
+                  {localAi.status === 'ready' && localAi.result && <AnalysisResultView result={localAi.result} />}
+                </div>
+              )}
+            </div>
+            <GoogleSheetPanel onInspect={inspectSharedSheet} />
+          </div>
+
+          <div className="demo-source">
+            <div><p className="eyebrow">TRY IT WITHOUT A SHEET</p><h3>Demo dataset</h3><p>Load the small bundled example to inspect its schema before connecting your own public sheet.</p></div>
+            <button type="button" className="button button-outline" onClick={loadDemoSchema} disabled={analytics.status === 'loading'}>{analytics.status === 'loading' ? 'Loading schema' : 'Load demo dataset'}</button>
+          </div>
+          {analytics.status === 'error' && <p className="error-state" role="alert">{analytics.message}</p>}
+          {analytics.status === 'ready' && (
+            <div className="schema-result"><p role="status"><strong>{analytics.source === 'sheet' ? 'Connected sheet' : 'Demo dataset'}</strong> · {analytics.schema.length} columns available to the agent.</p><table aria-label="Demo dataset schema"><thead><tr><th scope="col">Column</th><th scope="col">Type</th><th scope="col">Nullable</th></tr></thead><tbody>{analytics.schema.map((column) => <tr key={column.name}><td>{column.name}</td><td>{column.type}</td><td>{column.nullable ? 'Yes' : 'No'}</td></tr>)}</tbody></table></div>
+          )}
+        </div>
+      </section>
+
+      <section id="services" className="portfolio-section section-muted">
+        <div className="container"><div className="section-heading"><p className="eyebrow">WHAT I DO</p><h2>Services</h2></div><div className="service-grid">
+          <article className="service-card"><h3>Data Analysis &amp; Business Consulting</h3><p>Devising analytics strategies and refining business roadmaps to harness data-driven opportunities.</p></article>
+          <article className="service-card"><h3>AI Consulting &amp; Integration</h3><p>Selecting, shaping, and integrating practical AI systems into real workflows, with skills spanning LLM evaluation, prompt and system design, local-first inference, browser AI, data grounding, and API integration.</p></article>
+          <article className="service-card"><h3>Web &amp; Software Development</h3><p>Building secure, user-centric applications and websites with modern frameworks.</p></article>
+          <article className="service-card"><h3>Automation &amp; Cloud Solutions</h3><p>Designing end-to-end automation scripts, cloud integrations, and scalable processes.</p></article>
+        </div></div>
+      </section>
+
+      <section id="contact" className="portfolio-section contact-section">
+        <div className="container two-column contact-grid"><div><p className="eyebrow">CONTACT</p><h2>Let&apos;s build something useful.</h2><p>Whether you need advanced data engineering, an AI-driven application, or streamlined process automation, I&apos;m ready to help bring the idea to life.</p></div><div className="contact-details"><a href="mailto:RichardX13@gmail.com">RichardX13@gmail.com</a><a href="tel:+14156974734">(415) 697-4734</a><a href="https://www.linkedin.com/in/richardjones2020/" target="_blank" rel="noreferrer">linkedin.com/in/richardjones2020</a></div></div>
+      </section>
+
+      <footer><div className="container footer-row"><span>© 2024 Richard Jones. All Rights Reserved.</span><div><a href="https://www.linkedin.com/in/richardjones2020/" target="_blank" rel="noreferrer">LinkedIn</a><a href="https://github.com/RichardJones2020" target="_blank" rel="noreferrer">GitHub</a><a href="mailto:RichardX13@gmail.com">Email</a></div></div></footer>
     </main>
   );
 };

@@ -1,4 +1,13 @@
-id,name,age,salary
-1,Alice,30,70000
-2,Bob,25,60000
-3,Charlie,35,80000
+month,region,channel,requests,resolution_rate,satisfaction
+2026-01,Midwest,Email,182,0.86,4.1
+2026-01,West,Web,241,0.91,4.4
+2026-01,Northeast,Phone,156,0.82,3.9
+2026-02,Midwest,Web,205,0.88,4.2
+2026-02,West,Email,268,0.93,4.6
+2026-02,Northeast,Phone,171,0.84,4.0
+2026-03,Midwest,Phone,194,0.87,4.2
+2026-03,West,Web,289,0.94,4.7
+2026-03,Northeast,Email,183,0.86,4.1
+2026-04,Midwest,Web,227,0.90,4.4
+2026-04,West,Phone,276,0.92,4.5
+2026-04,Northeast,Web,211,0.88,4.3

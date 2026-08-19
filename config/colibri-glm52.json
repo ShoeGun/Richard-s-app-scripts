@@ -1,0 +1,13 @@
+{
+  "runtime": "colibri",
+  "release": "v1.3.0",
+  "modelFamily": "GLM-5.2",
+  "modelRepo": "mateogrgic/GLM-5.2-colibri-int4-with-int8-mtp",
+  "modelSizeGiB": 372,
+  "modelRootEnv": "COLI_MODEL",
+  "host": "127.0.0.1",
+  "port": 1236,
+  "mode": "serve",
+  "automaticRouting": false,
+  "notes": "Experimental local-only endpoint. Use a fast SSD and validate quality/latency before routing agent work here."
+}

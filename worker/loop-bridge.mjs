@@ -4,6 +4,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { readTelemetry } from "./lib/telemetry.mjs";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const CONFIG_PATH = path.join(ROOT, "loop.config.json");
@@ -127,6 +129,7 @@ async function collectSnapshot() {
   const workerState = await readJson(path.join(ROOT, "WORKER_STATE.json"), {});
   const workerConfig = await readJson(path.join(ROOT, "worker", "config.json"), {});
   const bridgeState = await readJson(BRIDGE_STATE_PATH, {});
+  const telemetry = await readTelemetry(path.join(ROOT, "worker", "runtime"), 5000);
   const tasks = await extractTasks().catch(() => []);
   const gitStatus = await execText("git", ["status", "--short"], 30000).catch((error) => error.output || error.message);
   const gitLog = await execText("git", ["log", "--oneline", "-6"], 30000).catch((error) => error.output || error.message);
@@ -138,6 +141,14 @@ async function collectSnapshot() {
     const status = taskStatus(workerState, task.id);
     acc[status] = (acc[status] || 0) + 1;
     return acc;
+  }, {});
+  const completedTasks = taskCounts.completed || 0;
+  const frontierTokens = telemetry.events
+    .filter((event) => event.provider === "codex")
+    .reduce((sum, event) => sum + (event.usage?.totalTokens || 0), 0);
+  const taskTokens = telemetry.events.reduce((totals, event) => {
+    if (event.taskId) totals[event.taskId] = (totals[event.taskId] || 0) + (event.usage?.totalTokens || 0);
+    return totals;
   }, {});
 
   const blocked = tasks
@@ -178,6 +189,7 @@ async function collectSnapshot() {
       attempts: taskState.attempts || 0,
       repairCycles: taskState.repairCycles || 0,
       escalationChannel: taskState.escalationChannel || null,
+      tokens: taskTokens[task.id] || 0,
       lastError: sanitize(taskState.lastError || "")
     };
   });
@@ -200,6 +212,15 @@ async function collectSnapshot() {
       projectId: config.projectId,
       goalId: config.goalId,
       issueId: bridgeState.paperclipIssueId || null
+    },
+    goal: {
+      title: "Browser-native local AI analytics portfolio",
+      objective: "Showcase a browser-hosted local language model that proposes validated analytics plans for bundled, public, and visitor-supplied data while remaining static and GitHub Pages compatible.",
+      completedTasks,
+      totalTasks: tasks.length,
+      progressPercent: tasks.length ? Math.round((completedTasks / tasks.length) * 100) : 0,
+      totalTokens: telemetry.summary?.totals?.totalTokens || 0,
+      frontierTokens
     },
     worker: {
       status: workerState.status || "unknown",
@@ -383,6 +404,7 @@ function taskIssueDescription(task, snapshot) {
     `Local status: ${task.status}`,
     `Dependencies: ${dependencies}`,
     `Attempts: ${task.attempts}; repair cycles: ${task.repairCycles}`,
+    `Observed tokens: ${task.tokens || 0}`,
     `Escalation channel: ${task.escalationChannel || "none"}`,
     `Dashboard: http://127.0.0.1:3210`,
     `Repository ledger: ${snapshot.project}\\TASKS.md`,
@@ -390,6 +412,23 @@ function taskIssueDescription(task, snapshot) {
     "",
     "This issue is synchronized from the local execution ledger. Edit the operator plan and guardrails in the EdgeOps dashboard."
   ].filter(Boolean).join("\n");
+}
+
+function paperclipGoalDescription(snapshot) {
+  return [
+    "Coordinate bounded, reviewable local-first agent work while minimizing paid foundational-model usage.",
+    "",
+    "Current primary loop",
+    `- Goal: ${snapshot.goal.title}`,
+    `- Outcome: ${snapshot.goal.objective}`,
+    `- Progress: ${snapshot.goal.completedTasks}/${snapshot.goal.totalTasks} tasks (${snapshot.goal.progressPercent}%)`,
+    `- Observed inference: ${snapshot.goal.totalTokens} tokens`,
+    `- Observed GPT/Codex share: ${snapshot.goal.frontierTokens} tokens`,
+    `- Worker status: ${snapshot.worker.status}`,
+    `- Next task: ${snapshot.tasks.nextReady ? `${snapshot.tasks.nextReady.id} ${snapshot.tasks.nextReady.title}` : "none"}`,
+    "",
+    "Detailed traces, provider usage, model conclusions, and manual GPT approvals are available in Agentic OS."
+  ].join("\n");
 }
 
 async function syncPaperclipTaskIssues(snapshot, config, bridgeState, parentIssueId) {
@@ -445,6 +484,11 @@ async function maybeSyncPaperclip(snapshot, config, bridgeState, fp, forceCommen
   if (!config.syncPaperclip) return bridgeState;
   const issueId = await ensurePaperclipIssue(config, bridgeState);
   if (!issueId) return bridgeState;
+  if (config.goalId) {
+    await paperclipRequest(config, "PATCH", `/api/goals/${config.goalId}`, {
+      description: paperclipGoalDescription(snapshot)
+    }).catch(() => {});
+  }
 
   const now = Date.now();
   const cooldownMs = (config.commentCooldownSeconds || 900) * 1000;
