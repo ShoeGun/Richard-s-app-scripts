@@ -1,0 +1,48 @@
+{
+  "name": "shoegun-github-io",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "npm run build:pages && npm run build:agent",
+    "build:pages": "node scripts/build-pages.mjs",
+    "build:agent": "vite build --config vite.agent.config.ts",
+    "preview": "vite preview --host 0.0.0.0",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings=0",
+    "test": "vitest run --environment jsdom",
+    "test:worker": "node --test worker/tests/*.node-test.mjs",
+    "verify:public-models": "node scripts/verify-public-model-registry.mjs",
+    "dom:validate": "powershell -ExecutionPolicy Bypass -File .\\scripts\\dom-workbench.ps1 validate",
+    "dom:prepare": "powershell -ExecutionPolicy Bypass -File .\\scripts\\dom-workbench.ps1 prepare",
+    "dom:plan": "powershell -ExecutionPolicy Bypass -File .\\scripts\\dom-workbench.ps1 plan"
+  },
+  "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.33.1-dev57.0",
+    "@huggingface/transformers": "^4.2.0",
+    "papaparse": "^5.5.4",
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@testing-library/jest-dom": "6.4.2",
+    "@testing-library/react": "14.2.1",
+    "@types/jest": "^30.0.0",
+    "@types/node": "24.13.3",
+    "@types/react": "18.2.48",
+    "@types/react-dom": "18.2.18",
+    "@typescript-eslint/eslint-plugin": "8.65.0",
+    "@typescript-eslint/parser": "8.65.0",
+    "@vitejs/plugin-react": "6.0.4",
+    "eslint": "10.7.0",
+    "globals": "17.4.0",
+    "jest": "^30.4.2",
+    "jsdom": "24.0.0",
+    "typescript": "5.9.3",
+    "vite": "8.1.5",
+    "vitest": "4.1.10",
+    "zod": "^4.4.3"
+  }
+}

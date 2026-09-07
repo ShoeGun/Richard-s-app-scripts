@@ -1,0 +1,36 @@
+Richard Jones
+Analytics, AI Integration, Data Engineering, and Full-Stack Development
+
+PROFILE
+Analytics and AI integration consultant, data engineer, analyst, and full-stack developer. I connect models, data, browser experiences, and business workflows into useful systems.
+
+SELECTED EXPERIENCE
+Uber - six years
+- Worked with machine-learning models in a high-volume commercial environment.
+- Built backend analytics tables using Hive.
+- Contributed to analytics work at global scale.
+
+Reciprocity Health - Lead Engineering
+- Led engineering work connecting healthcare workflows, data, and practical software delivery.
+
+Vangent - Government Analytics Contractor
+- Performed contractor analytics involving Medicare, Medicaid, Faisac, and the CDC.
+- Worked with accuracy, compliance, process discipline, and evidence-heavy requirements.
+
+Freelance Consultant - AI, Data Analytics, Legal Technology, and Business Development
+Sep 2020 - Jan 2025
+- Delivered AI, analytics, technical consulting, web, branding, and business-development projects.
+- Performed legal-technology and paralegal work, including case-material organization and evidence-focused research.
+- Built data pipelines, dashboards, browser tools, and full-stack web solutions.
+- Red-teamed foundational AI models and improved prompt and system designs.
+
+Industrial Electrical Engineer / Journeyman - Indiana
+One year
+- Field experience in physical systems, troubleshooting, execution, and safety-minded problem solving.
+
+SKILLS
+AI integration, local and browser-based models, LLM evaluation, prompt and system design, data analysis, Hive, SQL, Python, JavaScript, HTML, CSS, React, dashboards, data pipelines, legal technology, paralegal research, and workflow automation.
+
+CONTACT
+RichardX13@gmail.com
+https://www.linkedin.com/in/richardjones2020/

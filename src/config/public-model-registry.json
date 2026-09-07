@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-09-07",
+  "desktop": {
+    "role": "runnable-browser-model",
+    "profile": "desktop",
+    "id": "Brazenle/dom-hotdog-rain",
+    "revision": "7b74b11906d92738fc4d0447cd72b703f0ebc02f",
+    "quantization": "q4",
+    "hubUrl": "https://huggingface.co/Brazenle/dom-hotdog-rain",
+    "requiredFiles": [
+      "config.json",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "onnx/model_q4.onnx"
+    ]
+  },
+  "mobile": {
+    "role": "runnable-browser-model",
+    "profile": "mobile",
+    "id": "Brazenle/dom-hotdog-rain",
+    "revision": "7b74b11906d92738fc4d0447cd72b703f0ebc02f",
+    "quantization": "q4",
+    "hubUrl": "https://huggingface.co/Brazenle/dom-hotdog-rain",
+    "requiredFiles": [
+      "config.json",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "onnx/model_q4.onnx"
+    ]
+  },
+  "handoffLab": {
+    "role": "model-companion-artifacts",
+    "id": "Brazenle/kv-cache-handoff-lab",
+    "revision": "5f800e9c615d24b7bbd3dba0204cc58bb53aa506",
+    "hubUrl": "https://huggingface.co/Brazenle/kv-cache-handoff-lab",
+    "requiredFiles": [
+      "README.md",
+      "requirements.txt",
+      "reference/kvcache.py",
+      "reference/torch_kvcache.py",
+      "reference/live_transformers_roundtrip.py",
+      "artifacts/qwen25-05b-parity.kvc",
+      "schemas/capability-packet-1.schema.json",
+      "schemas/kvbridge-registry-1.schema.json",
+      "schemas/software-run-1.schema.json",
+      "tests/test_kvcache.py",
+      "tests/test_schemas.py",
+      "tests/test_torch_kvcache.py",
+      "translation/bridge-contract.schema.json",
+      "validation/acceptance.json",
+      "validation/qwen25-05b-parity.receipt.json"
+    ]
+  }
+}

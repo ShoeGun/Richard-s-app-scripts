@@ -1,0 +1,69 @@
+.analysis-result {
+  display: grid;
+  gap: 16px;
+}
+
+.result-summary {
+  margin: 0;
+  color: #334155;
+}
+
+.result-chart {
+  width: 100%;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.result-chart svg {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 7;
+  max-height: 360px;
+}
+
+.chart-axis {
+  stroke: #64748b;
+  stroke-width: 1.5;
+}
+
+.chart-tick,
+.chart-label {
+  fill: #475569;
+  font-size: 12px;
+}
+
+.chart-bar {
+  fill: #0284c7;
+}
+
+.chart-line {
+  fill: none;
+  stroke: #0f766e;
+  stroke-width: 3;
+}
+
+.chart-point {
+  fill: #ffffff;
+  stroke: #0f766e;
+  stroke-width: 3;
+}
+
+.chart-mark {
+  cursor: crosshair;
+  outline: none;
+  transition: filter 120ms ease, stroke-width 120ms ease;
+}
+
+.chart-mark:hover,
+.chart-mark:focus {
+  filter: brightness(1.18);
+  stroke: #111827;
+  stroke-width: 4;
+}
+
+.result-table-wrap {
+  overflow-x: auto;
+}
