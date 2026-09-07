@@ -6,6 +6,7 @@ import { createAnalyticsClient } from './lib/analytics';
 import type { AnalysisResult } from './lib/deterministic-analysis';
 import { browserModelForCurrentDevice, isMobileBrowser, LocalAiClient } from './lib/local-ai';
 import { parseModelPlan } from './lib/model-plan';
+import { PUBLIC_HANDOFF_LAB, publicModelForProfile, shortModelRevision } from './lib/public-model-registry';
 import type { UploadedDataset } from './lib/upload';
 import profileImage from '../profile1.jpg';
 import type { ModelDevice, ModelWorkerResponse } from './workers/model.types';
@@ -32,6 +33,7 @@ const formatBytes = (value: number | null) => {
 };
 
 const defaultPrompt = 'Group the rows by a useful category, count them, sort the counts descending, and choose an appropriate chart.';
+const WORK_HISTORY_TIMELINE_URL = 'https://script.google.com/macros/s/AKfycbxOJtfZOW1WPxzQQ1lwAK7x_TkZGSRBJOPbgwViDQsnpNxAgynokJHDr7Xwh6SS6uJc/exec';
 
 const promptForSchema = (request: string, schema: SchemaColumn[]) => {
   const fields = schema.length > 0
@@ -49,7 +51,9 @@ const promptForSchema = (request: string, schema: SchemaColumn[]) => {
 
 const App = () => {
   const mobileBrowser = isMobileBrowser();
+  const timelineFrameRef = React.useRef<HTMLIFrameElement>(null);
   const browserModel = browserModelForCurrentDevice();
+  const publicBrowserModel = publicModelForProfile(browserModel.profile);
   const [analytics, setAnalytics] = React.useState<AnalyticsState>({ status: 'idle' });
   const [localAi, setLocalAi] = React.useState<LocalAiState>({ status: 'idle' });
   const [prompt, setPrompt] = React.useState(defaultPrompt);
@@ -154,6 +158,20 @@ const App = () => {
   const isLoadingModel = localAi.status === 'checking' || localAi.status === 'loading';
   const canRunModel = localAi.status === 'ready';
   const agentRunning = localAi.status === 'generating' || localAi.status === 'executing';
+  const timelineMode = mobileBrowser ? 'vertical' : 'horizontal';
+  const timelineLayoutParams = React.useMemo(() => {
+    const timelineUrl = new URL(WORK_HISTORY_TIMELINE_URL);
+    timelineUrl.searchParams.set('v', '2');
+    timelineUrl.searchParams.set('timelineLayout', timelineMode);
+    return timelineUrl.toString();
+  }, [timelineMode]);
+  const syncTimelineFrame = () => {
+    const frame = timelineFrameRef.current;
+    if (!frame?.contentWindow) return;
+    frame.contentWindow.postMessage({ type: 'shoegun-timeline-mode', mobile: mobileBrowser, layout: timelineMode }, '*');
+    frame.contentWindow.postMessage({ type: 'shoegun-timeline-layout', layout: timelineMode }, '*');
+    frame.contentWindow.postMessage({ type: 'shoegun-timeline-resize-request' }, '*');
+  };
 
   return (
     <main>
@@ -163,6 +181,7 @@ const App = () => {
           <ul className="navbar-nav">
             <li><a href="#about">About Me</a></li>
             <li><a href="#projects">Projects</a></li>
+            <li><a href="#experiments">Experiments</a></li>
             <li><a href="#timeline">Work History</a></li>
             <li><a href="#analytics">Analytics</a></li>
             <li><a href="#services">Services</a></li>
@@ -232,15 +251,44 @@ const App = () => {
         </div>
       </section>
 
+      <section id="experiments" className="portfolio-section experiment-section">
+        <div className="container">
+          <div className="section-heading"><p className="eyebrow">OPEN MODEL LAB</p><h2>Capability handoff experiments</h2></div>
+          <p className="section-intro">A working investigation into portable raw KV-cache tensors: capture a contained idea after one model processes it, verify the cache, and translate it into a compatible cache geometry so a smaller model can begin with that computational context.</p>
+          <div className="experiment-grid">
+            <article className="experiment-card experiment-live">
+              <div className="experiment-status"><span aria-hidden="true" /> Exact-cache round trip verified</div>
+              <p className="card-kicker">KVC1 / RAW KV TENSORS</p>
+              <h3>Contained-idea cache handoff</h3>
+              <p>An exact-model live round trip now passes locally on Qwen2.5-0.5B: KVC1 exported 48 actual attention tensors across 24 layers, then a separate process reconstructed the cache and resumed decoding with the same next token as uninterrupted inference. The maximum logit difference was 1.54e-5 inside a 5e-5 tolerance.</p>
+              <p>The container binds immutable model and tokenizer identity, RoPE settings, tensor geometry, dtype, layout, sequence position, checksums, and an exact tensor directory. This proves real extraction and reinjection for one model/runtime—not translation or a capability increase yet.</p>
+              <p>A translation contract now specifies the next bridge: source cache → versioned learned projector → destination-family cache, with source and translated artifacts preserved for before/after capability probes.</p>
+              <p className="experiment-caveat">KV tensors are runtime activations, not model weights. Direct reuse requires compatible architecture and position semantics; cross-family transfer requires a trained translator and does not automatically preserve the larger model’s reasoning ability.</p>
+              <div className="card-links"><a href="#analytics">See Dom’s context ledger</a><a href={PUBLIC_HANDOFF_LAB.hubUrl} target="_blank" rel="noreferrer">Inspect on Hugging Face</a></div>
+            </article>
+            <article className="experiment-card experiment-pending">
+              <div className="experiment-status">Pending experiment</div>
+              <p className="card-kicker">CONTINUAL LEARNING / DIRECTIONAL MEMORY</p>
+              <h3>Competing ideas with explicit direction</h3>
+              <p>Test whether a model can preserve two intentionally conflicting concepts by attaching task identity, relation type, provenance, temporal order, and a signed conflict direction—then retrieving or adapting the correct concept for the current conditions instead of averaging them together.</p>
+              <p>The hypothesis is that conflict-aware routing and replay could reduce destructive interference in targeted cases while leaving compatible knowledge free to share. A related vector-memory study would augment similarity embeddings with directional relation channels, inspired by anisotropic and view-dependent representations in Gaussian splatting.</p>
+              <p className="experiment-caveat">The splatting analogy motivates an experiment; it is not evidence that vector databases compress knowledge the same way or that the method solves catastrophic forgetting.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
       <section id="timeline" className="portfolio-section">
         <div className="container">
           <div className="section-heading"><p className="eyebrow">EXPERIENCE</p><h2>Work History Timeline</h2></div>
-          <p className="section-intro">A visual overview of my professional journey from data engineering and operational leadership to technical consulting and AI-driven projects.</p>
+          <p className="section-intro">A visual overview of my professional journey across analytics, operations, healthcare, government contracting, banking, and AI-led consulting.</p>
           <iframe
-            className="timeline-frame"
-            src="https://script.google.com/macros/s/AKfycbxOJtfZOW1WPxzQQ1lwAK7x_TkZGSRBJOPbgwViDQsnpNxAgynokJHDr7Xwh6SS6uJc/exec?v=2"
+            ref={timelineFrameRef}
+            className={`timeline-frame${mobileBrowser ? ' mobile-layout' : ''}`}
+            src={timelineLayoutParams}
             loading="lazy"
             title="Work History Timeline"
+            onLoad={syncTimelineFrame}
           />
         </div>
       </section>
@@ -253,7 +301,7 @@ const App = () => {
             <div className="agent-console" id="sheet-agent">
               <div className="agent-console-header">
                 <div><span className="status-dot" aria-hidden="true" /> <strong>Local browser agent</strong></div>
-                <span className="model-label">{browserModel.id}</span>
+                <a className="model-label" href={publicBrowserModel.hubUrl} target="_blank" rel="noreferrer">{browserModel.id} @ {shortModelRevision(browserModel.revision)}</a>
               </div>
               <p className="agent-note">No model files download until you launch it. {mobileBrowser ? 'A smaller mobile profile is selected for this device.' : 'The fullest experience is optimized for a computer with WebGPU.'} The browser cache can reuse the model on later visits.</p>
               {localAi.status === 'idle' && <p className="muted">Launch local AI above to activate the analysis workspace.</p>}
