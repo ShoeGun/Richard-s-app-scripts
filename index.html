@@ -5,11 +5,7 @@
   <title>Richard Jones | Analytics & Engineering Portfolio</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <!-- React and React DOM -->
-  <script src="https://cdn.jsdelivr.net/npm/react/umd/react.production.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/react-dom/umd/react-dom.production.min.js"></script>
-  <!-- Babel Compiler -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/6.26.0/babel.min.js"></script>
+  <meta name="description" content="Richard Jones: data engineering, analytics, practical AI, and automation. Explore live projects, career experience, and a browser-based AI agent.">
   <!-- Bootstrap CSS CDN -->
   <link
     rel="stylesheet"
@@ -968,65 +964,26 @@
     }
   </style>
   <!-- Chart.js Library -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="/portfolio.css">
+  <script defer src="/portfolio.js"></script>
 </head>
 <body>
   <!-- React Navigation Bar -->
   <div id="navbar"></div>
-  <script type="text/babel">
-    class Navbar extends React.Component {
-      constructor(props) {
-        super(props);
-        this.state = { isOpen: false };
-      }
-
-      toggleNavbar = () => {
-        this.setState((prevState) => ({ isOpen: !prevState.isOpen }));
-      };
-
-      closeNavbar = () => {
-        this.setState({ isOpen: false });
-      };
-
-      render() {
-        return (
-          <nav className="navbar navbar-expand-lg fixed-top">
-            <a className="navbar-brand" href="#navbar">Richard Jones</a>
-            <button
-              className="navbar-toggler"
-              type="button"
-              onClick={this.toggleNavbar}
-            >
-              <span className="navbar-toggler-icon"></span>
-              <span className="navbar-toggler-icon"></span>
-              <span className="navbar-toggler-icon"></span>
-            </button>
-            <div className={`navbar-collapse ${this.state.isOpen ? 'active' : ''}`} id="navbarNav">
-              <ul className="navbar-nav mx-auto">
-                <li className="nav-item"><a className="nav-link" href="#navbar" onClick={this.closeNavbar}>Home</a></li>
-                <li className="nav-item"><a className="nav-link" href="#about" onClick={this.closeNavbar}>About Me</a></li>
-                <li className="nav-item"><a className="nav-link" href="#projects" onClick={this.closeNavbar}>Projects</a></li>
-                <li className="nav-item"><a className="nav-link" href="#timeline" onClick={this.closeNavbar}>Work History</a></li>
-                <li className="nav-item"><a className="nav-link" href="#browser-agent" onClick={this.closeNavbar}>Dom</a></li>
-                <li className="nav-item"><a className="nav-link" href="#browser-agent" onClick={this.closeNavbar}>Browser Agent</a></li>
-                <li className="nav-item"><a className="nav-link" href="#services" onClick={this.closeNavbar}>Services</a></li>
-                <li className="nav-item"><a className="nav-link" href="#contact" onClick={this.closeNavbar}>Contact</a></li>
-              </ul>
-            </div>
-          </nav>
-        );
-      }
-    }
-
-    ReactDOM.render(<Navbar />, document.getElementById('navbar'));
-  </script>
+  <a class="skip-link" href="#projects">Skip to projects</a>
+  <nav class="portfolio-nav" aria-label="Main navigation">
+    <a class="portfolio-brand" href="#navbar">Richard Jones<span>Data / Engineering / AI</span></a>
+    <div class="portfolio-links"><a href="#projects">Selected work</a><a href="#timeline">Experience</a><a href="#browser-agent">Meet Dom</a><a href="#contact">Contact</a></div>
+  </nav>
 
   <!-- Hero Section -->
   <section class="hero-section">
     <div class="container">
-      <h1>Shaping Data. Driving Innovation.</h1>
+      <p class="portfolio-eyebrow">ANALYTICS &amp; ENGINEERING PORTFOLIO</p>
+      <h1>Shaping data.<br><em>Building possibility.</em></h1>
       <p class="lead">Unifying Data Engineering, Advanced Analytics, and Operational Strategy to Modernize Business Solutions</p>
-      <p class="lead">Explore my portfolio of dynamic analytics, AI integrations, and transformative engineering projects.</p>
+      <div class="portfolio-actions"><a class="btn btn-primary" href="#projects">Explore selected work</a><a class="btn btn-outline-light" href="/Richard-Jones-resume.pdf" target="_blank" rel="noopener">View resume</a></div>
     </div>
   </section>
 
@@ -1060,7 +1017,7 @@
             <div class="card-body">
               <h5 class="card-title">Henry's Super Scoops CMS</h5>
               <p class="card-text">
-                A streamlined CMS built with Google Sheets and Apps Script, automating appointments, resource allocation, and Calendar sync for a free dessert-themed brand concept.
+                A service-business website and scheduling workflow built with Google Sheets and Apps Script, connecting pet-waste cleanup services, appointments, and Calendar integration.
               </p>
               <a href="https://shoegun.github.io/Henry-s/learn-more.html" target="_blank">Learn More</a>
             </div>
@@ -1148,10 +1105,11 @@
         <div class="timeline-embed-shell">
           <iframe
             class="timeline-frame"
-            src="https://script.google.com/macros/s/AKfycbwU2KQU0dn9E_anYJ7b3zOniqtlqrHZSt64ezUeid1q_3Dn3c_qKQ30UqdIseY3Ewd8/exec?v=2"
+            src="https://script.google.com/macros/s/AKfycbw3FxyKEyXlIgGubztwZx0wuA1dGqEXy9pxANEOyN3kDXXwL7sE5I_sPFI1qf6suwcZ/exec"
+            loading="lazy"
             scrolling="auto"
             referrerpolicy="no-referrer"
-            title="Richard Jones's original Google Sheets work-history timeline"
+            title="Richard Jones's interactive work-history timeline"
           ></iframe>
         </div>
       </details>
@@ -1330,7 +1288,7 @@
   <script>
     (() => {
       const timelineSection = document.getElementById('timeline');
-      document.getElementById('about')?.after(timelineSection);
+      document.getElementById('browser-agent')?.after(timelineSection);
       const timelinePanel = document.querySelector('.original-timeline-panel');
       const timelineFrame = document.querySelector('.timeline-frame');
       const timelineToggleLabel = document.querySelector('.timeline-toggle-label');

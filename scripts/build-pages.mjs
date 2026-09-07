@@ -6,7 +6,7 @@ const dist = join(root, 'dist');
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 
-for (const file of ['index.html', 'style.css', 'script.js', 'Code.gs', 'profile.jpg', 'profile1.jpg', 'resume.txt', 'Richard-Jones-resume.pdf', 'Richard-Jones-resume.docx']) {
+for (const file of ['index.html', 'style.css', 'script.js', 'portfolio.css', 'portfolio.js', 'Code.gs', 'profile.jpg', 'profile1.jpg', 'resume.txt', 'Richard-Jones-resume.pdf', 'Richard-Jones-resume.docx']) {
   await cp(join(root, file), join(dist, file));
 }
 

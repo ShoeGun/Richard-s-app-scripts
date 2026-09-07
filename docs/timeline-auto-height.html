@@ -1,0 +1,31 @@
+<!-- Add this immediately before </body> in the Apps Script index.html, then redeploy. -->
+<script>
+(() => {
+  const app = document.querySelector('.app') || document.querySelector('.wrap');
+  if (!app || !window.google?.script?.url) return;
+  google.script.url.getLocation((location) => {
+    const token = location.parameter.portfolioResizeToken;
+    if (!token) return;
+    let queued = false;
+    let previousHeight = 0;
+    const measure = () => {
+      queued = false;
+      const bodyStyle = getComputedStyle(document.body);
+      const height = Math.ceil(app.getBoundingClientRect().bottom + window.scrollY
+        + (parseFloat(bodyStyle.paddingBottom) || 0) + 4);
+      if (Math.abs(height - previousHeight) < 2) return;
+      previousHeight = height;
+      window.top.postMessage({ type: 'portfolio-timeline-height', token, height },
+        'https://shoegun.github.io');
+    };
+    const schedule = () => {
+      if (!queued) { queued = true; requestAnimationFrame(measure); }
+    };
+    new ResizeObserver(schedule).observe(app);
+    window.addEventListener('resize', schedule);
+    document.addEventListener('load', schedule, true);
+    document.fonts?.ready.then(schedule);
+    schedule();
+  });
+})();
+</script>
