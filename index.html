@@ -980,8 +980,8 @@
   <!-- Hero Section -->
   <section class="hero-section">
     <div class="container">
-      <p class="portfolio-eyebrow">ANALYTICS &amp; ENGINEERING PORTFOLIO</p>
-      <h1>Shaping data.<br><em>Building possibility.</em></h1>
+      
+      <h1>Shaping Data. Driving Innovation.</h1>
       <p class="lead">Unifying Data Engineering, Advanced Analytics, and Operational Strategy to Modernize Business Solutions</p>
       <div class="portfolio-actions"><a class="btn btn-primary" href="#projects">Explore selected work</a><a class="btn btn-outline-light" href="/Richard-Jones-resume.pdf" target="_blank" rel="noopener">View resume</a></div>
     </div>
@@ -1059,45 +1059,6 @@
   </section>
 
   <!-- Browser Agent Section: kept immediately after the featured work. -->
-  <section id="browser-agent" class="py-5">
-    <div class="container">
-      <h2 class="mb-4 text-center">Meet Dom</h2>
-      <p class="text-center mb-4">Download Dom locally. After activation, connect a public Google Sheet or try the bundled sample.</p>
-      <div class="browser-agent-card">
-      <iframe
-        src="/agent/?v=dom-hotdog-7b74b119"
-        style="width: 100%; height: 160px; min-height: 140px; border: none; border-radius: 14px; overflow: hidden;"
-        loading="lazy"
-        title="Local browser analytics agent"
-      ></iframe>
-      <div id="dom-face-host" hidden>
-        <div class="dom-face" id="dom-face" aria-label="Dom's chart face">
-          <p class="dom-face-intro">The same charts can explain data or give Dom a little expression.</p>
-          <p class="dom-face-status" id="dom-face-status" aria-live="polite">Mood: curious</p>
-          <div class="dom-face-stack">
-            <div class="dom-face-panel dom-face-eyes">
-              <canvas id="chart2" aria-label="Dom's animated eyes"></canvas>
-            </div>
-            <div class="dom-face-panel dom-face-mouth">
-              <canvas id="chart1" aria-label="Dom's animated mouth"></canvas>
-            </div>
-          </div>
-        </div>
-        <details class="dom-why-card" aria-labelledby="dom-why-title">
-          <summary>Why this browser agent is useful</summary>
-          <div class="dom-why-body">
-            <h3 id="dom-why-title">A small local model with a real page to work with.</h3>
-            <p>Dom runs in the visitor's browser, can use public sheet context, and can propose grounded changes to the page without sending the page to a hosted chat API.</p>
-            <p>The face is driven by the same Chart.js layer used for demonstrations, so expressions and data visualizations can share one living surface.</p>
-            <p class="dom-device-note">For the best experience, use a computer with WebGPU or a dedicated GPU.</p>
-          </div>
-        </details>
-      </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Work History Timeline Section -->
   <section id="timeline" class="py-5">
     <div class="container">
       <details class="original-timeline-panel" open>
@@ -1284,6 +1245,40 @@
       </div>
     </div>
   </section>
+
+  <section id="browser-agent" class="py-5">
+    <div class="container">
+      <h2 class="mb-3 text-center">Meet Dom</h2>
+      <p class="dom-lede">I built Dom to make working with data a little more approachable. He's a small AI experiment, a guide to this page, and occasionally the reason it's raining hotdogs.</p>
+      <div class="browser-agent-card">
+        <div id="dom-face-host">
+          <div class="dom-face" id="dom-face" aria-label="Dom's chart face">
+            <div class="dom-face-toolbar"><span id="dom-face-status" role="status">Ready to meet you</span><button type="button" id="dom-chart-toggle" aria-pressed="false" aria-controls="dom-chart-notes">Show the charts</button></div>
+            <div class="dom-face-stack">
+              <div class="dom-face-panel dom-face-eyes"><canvas id="chart2" role="img" aria-label="Dom's expressive eyes"></canvas></div>
+              <div class="dom-face-panel dom-face-mouth"><canvas id="chart1" role="img" aria-label="Dom's animated smile"></canvas></div>
+            </div>
+            <div id="dom-chart-notes" hidden>
+              <h3>AI at work, 2021&ndash;2025</h3>
+              <p>Same canvases, real numbers. The eyes become bars and the smile becomes a trend line.</p>
+              <table><caption>Survey respondents reporting AI use in at least one business function</caption><thead><tr><th scope="col">Year</th><th scope="col">Share</th></tr></thead><tbody><tr><th scope="row">2021</th><td>56%</td></tr><tr><th scope="row">2022</th><td>50%</td></tr><tr><th scope="row">2023</th><td>55%</td></tr><tr><th scope="row">2024</th><td>78%</td></tr><tr><th scope="row">2025</th><td>88%</td></tr></tbody></table>
+              <p class="small">Cross-industry survey results, not a census of all businesses or an industry-by-industry breakdown. Samples vary by year. Source: <a href="https://hai.stanford.edu/assets/files/ai_index_report_2026.pdf" target="_blank" rel="noopener noreferrer">Stanford AI Index 2026, figure 4.3.1</a>, drawing on McKinsey's annual surveys. Historical data, not a live feed.</p>
+            </div>
+          </div>
+        </div>
+        <iframe src="/agent/?v=dom-face-refresh-20260907" style="width:100%;height:160px;min-height:140px;border:0" loading="lazy" title="Local browser analytics agent"></iframe>
+      </div>
+      <div class="dom-guide">
+        <details><summary>What can I try?</summary><div><p>Activate Dom, then ask a short question or try making it rain hotdogs. Connect a public Google Sheet or use the sample data to explore his analytics tools. Keep requests small while I'm improving the model.</p><p>The chart button above works without downloading the model. It's a quick look at how his face is made.</p></div></details>
+        <details><summary>What happens when I activate him?</summary><div><p>Your browser downloads my trained model from Hugging Face, about 770 MB. After that, the model runs on your device rather than sending your prompts to a hosted chat service. The first load can take a while, and a capable computer will have an easier time than a phone.</p><p>Loading the model and connecting a public sheet still use the internet. Don't put private information in a publicly shared sheet.</p></div></details>
+        <details><summary>Why does his face turn into charts?</summary><div><p>I wanted the data to have a little personality. His eyes and mouth use Chart.js, the same library that draws the bars and trend line. He looks thoughtful while working and moves his mouth as his reply arrives. There's no voice yet.</p></div></details>
+        <details><summary>What am I building next?</summary><div><p>I plan to add voice and train Dom with more analytics tools, so he can help explore data and explain what he finds. Those are next steps, not features I'm claiming are finished.</p><p>He's still an experiment. He can get things wrong, so check anything important. I'd rather show you what I'm building honestly than pretend it's a finished product.</p><a href="https://huggingface.co/Brazenle/dom-hotdog-rain" target="_blank" rel="noopener noreferrer">See the trained model and its limitations</a></div></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- Work History Timeline Section -->
+
 
   <script>
     (() => {
@@ -1500,143 +1495,86 @@
 
   <!-- Chart.js Script for Dom's deterministic chart face -->
   <script>
-    const domEyePlugin = {
-      id: "dom-eye-pupils",
-      afterDatasetsDraw(chart) {
-        const context = chart.ctx;
-        const { left, right, top, bottom } = chart.chartArea;
-        const width = right - left;
-        const height = bottom - top;
-        const values = chart.data.datasets[0].data;
-        context.save();
-        values.forEach((value, index) => {
-          const openness = Math.max(.08, Math.min(1, Number(value) / 13));
-          const x = left + width * (index === 0 ? .3 : .7);
-          const y = top + height * .56;
-          const eyeWidth = Math.min(76, width * .27);
-          const eyeHeight = Math.max(4, 42 * openness);
-          context.fillStyle = "#f5fbfa";
-          context.strokeStyle = "#8bd4ce";
-          context.lineWidth = 2;
-          context.beginPath();
-          context.ellipse(x, y, eyeWidth / 2, eyeHeight / 2, 0, 0, Math.PI * 2);
-          context.fill();
-          context.stroke();
-          if (openness > .2) {
-            const pupilRadius = Math.max(4, Math.min(13, eyeHeight * .34));
-            context.fillStyle = "#24555a";
-            context.beginPath();
-            context.arc(x, y + eyeHeight * .05, pupilRadius, 0, Math.PI * 2);
-            context.fill();
-            context.fillStyle = "#ffffff";
-            context.beginPath();
-            context.arc(x - pupilRadius * .35, y - pupilRadius * .4, Math.max(2, pupilRadius * .32), 0, Math.PI * 2);
-            context.fill();
-          }
-        });
-        context.restore();
-      }
-    };
+
     const faceMoods = {
-      curious: { eyes: [13, 10], mouth: [3, 8, 3] },
-      happy: { eyes: [11, 11], mouth: [8, 3, 8] },
-      alert: { eyes: [17, 17], mouth: [4, 4, 4] },
-      blink: { eyes: [2, 2], mouth: [3, 4, 3] },
-      wonder: { eyes: [16, 16], mouth: [4, 13, 4] },
-      thinking: { eyes: [9, 12], mouth: [7, 4, 7] },
-      surprised: { eyes: [18, 18], mouth: [2, 16, 2] },
-      concerned: { eyes: [7, 5], mouth: [10, 3, 10] },
-      sleepy: { eyes: [4, 3], mouth: [3, 4, 3] },
-      celebrate: { eyes: [15, 15], mouth: [10, 2, 10] }
+      curious: {eyes:[13,11],mouth:[7,4,7]}, happy:{eyes:[10,10],mouth:[15,2,15]},
+      thinking:{eyes:[8,13],mouth:[6,7,9]}, alert:{eyes:[16,16],mouth:[5,5,5]},
+      wonder:{eyes:[16,16],mouth:[9,2,9]}, surprised:{eyes:[18,18],mouth:[12,1,12]},
+      concerned:{eyes:[8,7],mouth:[3,9,3]}, sleepy:{eyes:[4,4],mouth:[5,4,5]},
+      celebrate:{eyes:[10,10],mouth:[17,1,17]}, blink:{eyes:[1,1],mouth:[7,4,7]}
     };
-    let domFaceCharts = null;
-    let domFaceTimer = null;
-    let domThinkingTimer = null;
-    let domSpeechTimer = null;
-    let domMoodTimer = null;
-    let domMoodPulseTimer = null;
-    let domFaceMountTimer = null;
-    let domFaceMountAttempts = 0;
-    let pendingDomFaceMood = null;
-    let pendingDomFaceData = null;
-    const setFaceStatus = (text) => {
-      const status = document.getElementById('dom-face-status');
-      if (status) status.textContent = text;
-    };
-    const setDomFaceMood = (mood) => {
-      pendingDomFaceMood = mood;
-      setFaceStatus(`Mood: ${mood}`);
-      if (!domFaceCharts) return;
-      window.clearInterval(domThinkingTimer);
-      domThinkingTimer = null;
-      window.clearTimeout(domMoodTimer);
-      window.clearInterval(domMoodPulseTimer);
-      domMoodTimer = null;
-      domMoodPulseTimer = null;
-      const next = faceMoods[mood] || faceMoods.curious;
-      document.getElementById('dom-face')?.setAttribute('data-mood', mood);
-      domFaceCharts.eyes.data.datasets[0].data = next.eyes;
-      domFaceCharts.mouth.data.datasets[0].data = next.mouth;
-      domFaceCharts.eyes.update();
-      domFaceCharts.mouth.update();
-      if (mood === 'sleepy') {
-        let phase = 0;
-        domMoodPulseTimer = window.setInterval(() => {
-          phase += 1;
-          const blink = phase % 4 === 0;
-          domFaceCharts.eyes.data.datasets[0].data = blink ? [2, 2] : phase % 2 ? [3, 2] : [4, 3];
-          domFaceCharts.eyes.update('none');
-        }, 850);
-      }
-      if (mood === 'thinking') {
-        let phase = 0;
-        domThinkingTimer = window.setInterval(() => {
-          phase += .72;
-          const pulse = Math.sin(phase) * 2.6;
-          const lift = Math.cos(phase * .7) * 1.2;
-          domFaceCharts.mouth.data.datasets[0].data = [
-            Math.max(1, 5.8 - pulse * .22 + lift),
-            Math.min(19, 6.2 + pulse),
-            Math.max(1, 5.8 - pulse * .22 - lift)
-          ];
-          domFaceCharts.mouth.update('none');
-        }, 190);
-      }
-      if (mood !== 'curious' && mood !== 'happy') {
-        domMoodTimer = window.setTimeout(() => setDomFaceMood('curious'), 6000);
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let domFaceCharts = null, currentMood = 'curious', chartMode = false;
+    let talking = false, phase = 0, faceTimer = null, sequenceTimer = null;
+    let speechEndTimer = null, customData = null;
+    const status = text => { document.getElementById('dom-face-status').textContent = text; };
+    const eyePlugin = {
+      id:'dom-expressive-eyes', afterDatasetsDraw(chart) {
+        if (chartMode) return;
+        const ctx=chart.ctx, area=chart.chartArea, w=area.right-area.left;
+        const cheerful=currentMood==='happy'||currentMood==='celebrate';
+        const thinking=currentMood==='thinking'&&!talking;
+        ctx.save(); ctx.lineCap='round';
+        chart.data.datasets[0].data.forEach((v,i)=>{
+          const x=area.left+w*(i===0?.3:.7), y=(area.top+area.bottom)/2;
+          const ew=Math.min(72,w*.24), eh=Math.max(3,Math.min(46,Number(v)*3));
+          ctx.strokeStyle='#a9e3e4'; ctx.lineWidth=5;
+          if(cheerful){ctx.beginPath();ctx.moveTo(x-ew/2,y+6);ctx.quadraticCurveTo(x,y-26,x+ew/2,y+6);ctx.stroke();}
+          else {
+            ctx.fillStyle='#f0ffff';ctx.beginPath();ctx.ellipse(x,y,ew/2,eh/2,0,0,Math.PI*2);ctx.fill();
+            if(eh>8){const shift=thinking?Math.sin(phase*.65)*7:0;ctx.fillStyle='#273d55';ctx.beginPath();ctx.arc(x+shift,y+(thinking?-5:1),Math.min(12,eh*.3),0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x+shift-3,y-4,3,0,Math.PI*2);ctx.fill();}
+          }
+          if(thinking){ctx.beginPath();ctx.moveTo(x-ew*.42,y-eh/2-10);ctx.lineTo(x+ew*.42,y-eh/2-(i===0?20:8));ctx.stroke();}
+          if(cheerful){ctx.fillStyle='#ef83544a';ctx.beginPath();ctx.ellipse(x+(i===0?-12:12),y+25,16,5,0,0,Math.PI*2);ctx.fill();}
+        });ctx.restore();
       }
     };
-    const setDomFaceData = (data) => {
-      pendingDomFaceData = data;
-      if (!domFaceCharts || !data || !Array.isArray(data.eyes) || !Array.isArray(data.mouth)) return;
-      const eyes = data.eyes.slice(0, 2).map((value) => Math.max(2, Math.min(18, Number(value) || 10)));
-      const mouth = data.mouth.slice(0, 3).map((value) => Math.max(2, Math.min(18, Number(value) || 10)));
-      if (eyes.length !== 2 || mouth.length !== 3) return;
-      domFaceCharts.eyes.data.datasets[0].data = eyes;
-      domFaceCharts.mouth.data.datasets[0].data = mouth;
-      domFaceCharts.eyes.update();
-      domFaceCharts.mouth.update();
-      setFaceStatus(`Data face: ${String(data.label || 'analysis result')}`);
-    };
-    const speakWithFace = (text, done = false) => {
-      if (!domFaceCharts) return;
-      const sample = String(text || '');
-      const letters = (sample.match(/[a-z]/gi) || []).length;
-      const vowels = (sample.match(/[aeiouy]/gi) || []).length;
-      const punctuation = (sample.match(/[,.!?;:]/g) || []).length;
-      const vowelRatio = letters ? vowels / letters : .25;
-      const energy = Math.min(1, .18 + sample.length / 80 + vowelRatio * .55 + punctuation * .04);
-      const curve = Math.sin((sample.length + vowels * 3) * .7) * 2.4;
-      const opening = Math.min(18, 3.5 + energy * 12.5);
-      domFaceCharts.mouth.data.datasets[0].data = [
-        Math.max(1, 7 - opening * .35 + curve),
-        Math.min(19, 3 + opening + curve * .35),
-        Math.max(1, 7 - opening * .35 - curve)
-      ];
-      domFaceCharts.mouth.update('none');
-      window.clearTimeout(domSpeechTimer);
-      if (done) domSpeechTimer = window.setTimeout(() => setDomFaceMood('happy'), 260);
-    };
+    function chartOptions(dataMode) {
+      return {responsive:true,maintainAspectRatio:false,animation:{duration:reducedMotion.matches?0:240},
+        plugins:{legend:{display:false},tooltip:{enabled:dataMode}},
+        scales:{x:{display:dataMode,ticks:{color:'#dce8f5'},grid:{display:false}},
+          y:{display:dataMode,min:0,max:dataMode?100:20,ticks:{color:'#dce8f5',callback:v=>v+'%'},grid:{color:'#ffffff18'}}}};
+    }
+    function renderFace() {
+      if(!domFaceCharts||chartMode)return;
+      const mood=customData||faceMoods[currentMood]||faceMoods.curious;
+      domFaceCharts.eyes.data.datasets[0].data=mood.eyes;
+      domFaceCharts.mouth.data.datasets[0].data=talking&&!reducedMotion.matches?[10,3+Math.abs(Math.sin(phase*2.4))*9,10]:mood.mouth;
+      domFaceCharts.eyes.update('none');domFaceCharts.mouth.update('none');
+    }
+    function animateFace() {
+      clearInterval(faceTimer);faceTimer=null;
+      if(chartMode||reducedMotion.matches||document.hidden)return;
+      if(talking||currentMood==='thinking')faceTimer=setInterval(()=>{phase+=.35;renderFace();},150);
+    }
+    function setMood(mood) {
+      clearInterval(sequenceTimer);sequenceTimer=null;clearTimeout(speechEndTimer);
+      currentMood=faceMoods[mood]?mood:'curious';talking=false;customData=null;
+      if(!chartMode)status(currentMood==='thinking'?'Thinking...':currentMood==='happy'?'Happy to help':currentMood==='curious'?'Ready to meet you':currentMood);
+      renderFace();animateFace();
+    }
+    function speak(text,done=false) {
+      clearInterval(sequenceTimer);sequenceTimer=null;clearTimeout(speechEndTimer);
+      talking=true;customData=null;phase+=String(text||'').length*.03;
+      if(!chartMode)status('Writing a reply...');renderFace();animateFace();
+      if(done)speechEndTimer=setTimeout(()=>setMood('happy'),300);
+    }
+    function toggleCharts() {
+      if(!domFaceCharts)return;
+      chartMode=!chartMode;
+      document.getElementById('dom-chart-toggle').setAttribute('aria-pressed',String(chartMode));
+      document.getElementById('dom-chart-toggle').textContent=chartMode?'Back to Dom':'Show the charts';
+      document.getElementById('dom-chart-notes').hidden=!chartMode;
+      document.getElementById('dom-face').classList.toggle('is-charts',chartMode);
+      const years=['2021','2022','2023','2024','2025'], values=[56,50,55,78,88];
+      domFaceCharts.eyes.data={labels:chartMode?years:['Left','Right'],datasets:[{label:'Organizations using AI (%)',data:chartMode?values:[13,11],backgroundColor:chartMode?'#9ac6ec':'transparent',borderRadius:7}]};
+      domFaceCharts.mouth.data={labels:chartMode?years:['L','C','R'],datasets:[{label:'Organizations using AI (%)',data:chartMode?values:[7,4,7],borderColor:'#ef8354',backgroundColor:'#ef835421',fill:true,pointRadius:chartMode?4:0,borderWidth:chartMode?3:6,tension:chartMode?0:.45}]};
+      for(const chart of Object.values(domFaceCharts)){chart.options=chartOptions(chartMode);chart.update();}
+      document.getElementById('chart2').setAttribute('aria-label',chartMode?'AI adoption bar chart: 56, 50, 55, 78 and 88 percent, 2021 through 2025':"Dom's expressive eyes");
+      document.getElementById('chart1').setAttribute('aria-label',chartMode?'AI adoption trend line, 2021 through 2025':"Dom's animated smile");
+      status(chartMode?'AI adoption / 2021-2025':talking?'Writing a reply...':currentMood==='thinking'?'Thinking...':'Ready to meet you');
+      renderFace();animateFace();
+    }
     const showFireworks = () => {
       const layer = document.createElement('div');
       layer.className = 'dom-fireworks';
@@ -1678,72 +1616,36 @@
       document.body.appendChild(layer);
       window.setTimeout(clearHotdogRain, 9000);
     };
-    const mountDomFace = () => {
-      const host = document.getElementById('dom-face-host');
-      const eyes = document.getElementById('chart2');
-      const mouth = document.getElementById('chart1');
-      if (domFaceCharts || !host || !eyes || !mouth) return;
-      if (!window.Chart) {
-        if (domFaceMountAttempts < 50) {
-          domFaceMountAttempts += 1;
-          window.clearTimeout(domFaceMountTimer);
-          domFaceMountTimer = window.setTimeout(mountDomFace, 100);
-        }
-        return;
-      }
-      domFaceMountAttempts = 0;
-      host.hidden = false;
-      domFaceCharts = {
-        mouth: new Chart(mouth.getContext('2d'), {
-          type: 'line',
-          data: { labels: ['L', 'C', 'R'], datasets: [{ data: faceMoods.curious.mouth, borderColor: '#ef8354', backgroundColor: 'rgba(239, 131, 84, 0.16)', pointRadius: 0, borderWidth: 5, tension: .5, fill: true }] },
-          options: { responsive: true, maintainAspectRatio: false, animation: { duration: 500 }, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false, min: 0, max: 20 } } }
-        }),
-        eyes: new Chart(eyes.getContext('2d'), {
-          type: 'bar',
-          data: { labels: ['Left', 'Right'], datasets: [{ data: faceMoods.curious.eyes, backgroundColor: ['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)'], borderColor: 'rgba(0, 0, 0, 0)', borderWidth: 0, borderRadius: 36, barThickness: 86, maxBarThickness: 86 }] },
-          options: { responsive: true, maintainAspectRatio: false, animation: { duration: 500 }, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { display: false, min: 0, max: 20 } } },
-          plugins: [domEyePlugin]
-        })
+
+    function mountDomFace() {
+      if(domFaceCharts||!window.Chart)return;
+      domFaceCharts={
+        eyes:new Chart(document.getElementById('chart2'),{type:'bar',data:{labels:['Left','Right'],datasets:[{data:[13,11],backgroundColor:'transparent'}]},options:chartOptions(false),plugins:[eyePlugin]}),
+        mouth:new Chart(document.getElementById('chart1'),{type:'line',data:{labels:['L','C','R'],datasets:[{data:[7,4,7],borderColor:'#ef8354',backgroundColor:'#ef835421',fill:true,pointRadius:0,borderWidth:6,tension:.45}]},options:chartOptions(false)})
       };
-      window.__shoegunDomFace = {
-        setMood(mood) { window.clearInterval(domFaceTimer); domFaceTimer = null; setDomFaceMood(mood); },
-        animate(sequence = ['curious', 'wonder', 'happy', 'blink', 'curious']) {
-          window.clearInterval(domFaceTimer);
-          const moods = sequence.filter((mood) => faceMoods[mood]);
-          let index = 0;
-          setDomFaceMood(moods[index] || 'curious');
-          domFaceTimer = window.setInterval(() => { index = (index + 1) % (moods.length || 1); setDomFaceMood(moods[index] || 'curious'); }, 900);
-        },
-        stop() { window.clearInterval(domFaceTimer); domFaceTimer = null; },
-        speak(text, done = false) { speakWithFace(text, done); },
-        setData(data) { setDomFaceData(data); },
-        moods() { return Object.keys(faceMoods); }
+      window.__shoegunDomFace={setMood,speak,
+        setData(data){if(!Array.isArray(data?.eyes)||!Array.isArray(data?.mouth))return;
+          const clean=a=>a.map(v=>Math.max(1,Math.min(19,Number(v)||1)));
+          if(data.eyes.length<2||data.mouth.length<3)return;
+          customData={eyes:clean(data.eyes.slice(0,2)),mouth:clean(data.mouth.slice(0,3))};renderFace();},
+        animate(sequence=['curious','happy']){clearInterval(sequenceTimer);let i=0;const tick=()=>{currentMood=sequence[i++%sequence.length]||'curious';renderFace();};tick();if(!reducedMotion.matches)sequenceTimer=setInterval(tick,1200);},
+        stop(){clearInterval(sequenceTimer);clearInterval(faceTimer);},moods(){return Object.keys(faceMoods);}
       };
-      window.__shoegunDomEffects = { fireworks: showFireworks, hotdogRain: showHotdogRain, stopHotdogRain: clearHotdogRain };
-      if (pendingDomFaceData) setDomFaceData(pendingDomFaceData);
-      if (pendingDomFaceMood) setDomFaceMood(pendingDomFaceMood);
-      else window.__shoegunDomFace.animate();
-    };
-    window.addEventListener('message', (event) => {
-      const agentFrame = document.querySelector('#browser-agent iframe');
-      if (!agentFrame || event.source !== agentFrame.contentWindow) return;
-      if (event.data?.type === 'shoegun-browser-agent-state' && event.data.state === 'ready') mountDomFace();
-      if (event.data?.type === 'shoegun-dom-face-mood' && typeof event.data.mood === 'string') {
-        pendingDomFaceMood = event.data.mood;
-        mountDomFace();
-        window.__shoegunDomFace?.setMood(event.data.mood);
-      }
-      if (event.data?.type === 'shoegun-dom-face-data') {
-        pendingDomFaceData = event.data.data;
-        mountDomFace();
-        window.__shoegunDomFace?.setData(event.data.data);
-      }
-      if (event.data?.type === 'shoegun-dom-face-speech') {
-        mountDomFace();
-        window.__shoegunDomFace?.speak(event.data.text, event.data.done === true);
-      }
+      window.__shoegunDomEffects={fireworks:showFireworks,hotdogRain:showHotdogRain,stopHotdogRain:clearHotdogRain};
+      document.getElementById('dom-chart-toggle').addEventListener('click',toggleCharts);
+      renderFace();
+    }
+    window.addEventListener('message',event=>{
+      const frame=document.querySelector('#browser-agent iframe');
+      if(!frame||event.source!==frame.contentWindow||event.origin!==window.location.origin)return;
+      mountDomFace();
+      if(event.data?.type==='shoegun-dom-face-mood')setMood(event.data.mood);
+      if(event.data?.type==='shoegun-dom-face-speech')speak(event.data.text,event.data.done===true);
+      if(event.data?.type==='shoegun-dom-face-data')window.__shoegunDomFace?.setData(event.data.data);
     });
+    document.addEventListener('visibilitychange',animateFace);
+    reducedMotion.addEventListener('change',()=>{renderFace();animateFace();});
+    document.addEventListener('DOMContentLoaded',mountDomFace);
   </script>
 </body>
 </html>

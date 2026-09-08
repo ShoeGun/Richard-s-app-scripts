@@ -1,57 +1,35 @@
 /* global document, window */
 (() => {
   'use strict';
-  const covers = {
-    henrys: ['Sheets + automation', 'Service, simplified.', '#875044'],
-    kepler: ['Geospatial analytics', 'A different perspective.', '#294951'],
-    altitude: ['Route planning', 'Explore the elevation.', '#53604a']
-  };
-  const previews = [];
   document.querySelectorAll('[data-dom-project]').forEach((card) => {
-    const coverData = covers[card.dataset.domProject];
     const link = card.querySelector('a.btn-primary');
-    if (!coverData || !link) return;
-    const cover = document.createElement('div');
-    cover.className = 'project-cover';
-    cover.style.setProperty('--cover-bg', coverData[2]);
+    if (!link) return;
+    const preview = document.createElement('div');
+    preview.className = 'project-live-preview';
+    const frame = document.createElement('iframe');
+    frame.title = card.querySelector('.card-title').textContent.trim() + ' live site preview';
+    frame.loading = 'lazy';
+    frame.tabIndex = -1;
+    frame.setAttribute('aria-hidden', 'true');
+    frame.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+    frame.referrerPolicy = 'strict-origin-when-cross-origin';
+    frame.src = link.href;
+    const open = document.createElement('a');
+    open.href = link.href;
+    open.target = '_blank';
+    open.rel = 'noopener noreferrer';
+    open.setAttribute('aria-label', 'Open ' + card.querySelector('.card-title').textContent.trim());
     const label = document.createElement('span');
-    label.textContent = coverData[0];
-    const headline = document.createElement('strong');
-    headline.textContent = coverData[1];
-    cover.append(label, headline);
-    card.prepend(cover);
-    const preview = document.createElement('details');
-    preview.className = 'project-preview';
-    const summary = document.createElement('summary');
-    summary.textContent = 'Explore live preview';
-    const help = document.createElement('p');
-    help.textContent = 'If the app requires sign-in or cannot be embedded, use View Project above.';
-    preview.append(summary);
-    let frame;
-    preview.addEventListener('toggle', () => {
-      if (preview.open) {
-        previews.forEach((other) => { if (other !== preview) other.open = false; });
-        if (!frame) {
-          frame = document.createElement('iframe');
-          frame.title = `${card.querySelector('.card-title').textContent.trim()} live preview`;
-          frame.referrerPolicy = 'strict-origin-when-cross-origin';
-          frame.src = link.href;
-          preview.append(frame, help);
-        }
-      } else if (frame) {
-        frame.remove();
-        help.remove();
-        frame = undefined;
-      }
-    });
-    previews.push(preview);
-    card.append(preview);
+    label.textContent = 'Live site / Open project';
+    open.append(label);
+    preview.append(frame, open);
+    card.prepend(preview);
   });
   const projectHeading = document.querySelector('#projects h2');
   if (projectHeading) {
     const intro = document.createElement('p');
     intro.className = 'preview-help';
-    intro.textContent = 'Working ideas, built to explore. Open a live preview or visit each project in its own window.';
+    intro.textContent = 'A live look at each project. Select a preview to explore the full app. Some Google apps may need to open in their own tab.';
     projectHeading.after(intro);
   }
   const timeline = document.querySelector('.timeline-frame');
