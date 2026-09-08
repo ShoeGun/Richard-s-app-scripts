@@ -1,36 +1,61 @@
-Richard Jones
-Analytics, AI Integration, Data Engineering, and Full-Stack Development
+RICHARD JONES
+Database Administration | Data Engineering | Analytics
+Phoenix, AZ | (415) 697-4734 | RichardX13@gmail.com
+linkedin.com/in/richardjones2020 | shoegun.github.io
 
 PROFILE
-Analytics and AI integration consultant, data engineer, analyst, and full-stack developer. I connect models, data, browser experiences, and business workflows into useful systems.
+Database and data operations professional with hands-on experience maintaining production PostgreSQL on AWS RDS, reconciling business-critical data, and administering database backups, recovery, and access controls. Uses SQL, Python, and reporting tools to investigate issues, automate work, and improve data reliability. Career since 2003 spans banking operations, workforce analytics, business ownership, consulting, and software engineering.
 
-SELECTED EXPERIENCE
-Uber - six years
-- Worked with machine-learning models in a high-volume commercial environment.
-- Built backend analytics tables using Hive.
-- Contributed to analytics work at global scale.
+CORE SKILLS
+Databases and operations: PostgreSQL, AWS RDS, MySQL, psql, phpMyAdmin, SQL, data modeling, production reconciliation, transaction safeguards, backup and recovery, access controls.
+Engineering and analytics: Python, Ruby, Linux/SSH, Hive/HiveQL, Apache Spark, Piper, RStudio, Jupyter, ETL pipelines, standardized analytical queries, Tableau, Power BI, Grafana.
+Cloud and delivery: AWS storage and backups, GCP IAM, application permissions, Next.js, cross-functional delivery, migration support, HIPAA requirements and HITRUST e1 certification efforts.
 
-Reciprocity Health - Lead Engineering
-- Led engineering work connecting healthcare workflows, data, and practical software delivery.
+RECENT EXPERIENCE
+Reciprocity Health / Clutch | Software Engineer | Database and Data Operations
+Feb 2025 - Dec 2025 | Remote
+- Maintained production PostgreSQL on AWS RDS for TheraPay. Investigated and reconciled member eligibility, enrollment, and rewards-processing data using psql, SQL, Python, and Ruby.
+- Performed controlled corrections and reprocessing with transaction safeguards and before-and-after validation; investigated discrepancies affecting operational reporting and downstream processing.
+- Maintained and modernized a Next.js monorepo while supporting HIPAA requirements and HITRUST e1 certification efforts.
+- Following Clutch's acquisition of Reciprocity Health in 2025, completed a major migration, improved code and processes, and transferred lead-engineering responsibilities to Clutch's team.
 
-Vangent - Government Analytics Contractor
-- Performed contractor analytics involving Medicare, Medicaid, Faisac, and the CDC.
-- Worked with accuracy, compliance, process discipline, and evidence-heavy requirements.
+Independent Consulting | Analytics, Software Development and AI Integration
+Sep 2020 - Jan 2025 | Freelance and project-based
+- Delivered data pipelines, dashboards, full-stack web applications, and business-process automation across independent client projects.
+- Performed legal digital-evidence research, processing, and organization as a paralegal under attorney supervision; developed tools to support evidence review.
+- Contributed AI integration and optical character recognition (OCR) to a project for a major financial institution under nondisclosure obligations.
 
-Freelance Consultant - AI, Data Analytics, Legal Technology, and Business Development
-Sep 2020 - Jan 2025
-- Delivered AI, analytics, technical consulting, web, branding, and business-development projects.
-- Performed legal-technology and paralegal work, including case-material organization and evidence-focused research.
-- Built data pipelines, dashboards, browser tools, and full-stack web solutions.
-- Red-teamed foundational AI models and improved prompt and system designs.
+ADDITIONAL RECENT CONTRACT WORK
+Configured GCP IAM permissions and application access restrictions for a recent Moody Goose contract sprint supporting driver credential verification.
 
-Industrial Electrical Engineer / Journeyman - Indiana
-One year
-- Field experience in physical systems, troubleshooting, execution, and safety-minded problem solving.
+EARLIER EXPERIENCE
+Uber | Global Analyst | New Innovations and Global Analytics
+Feb 2018 - Jul 2020
+- Used PostgreSQL, Hive, Apache Spark, Piper, and RStudio in hands-on global analytics work supporting Greenlight operations, the New Innovations team, and kiosk initiatives.
+- Helped design standardized, multidimensional "gold-standard" analytical queries and backend analytics tables, providing consistent definitions and reporting foundations across business groups.
+- Built analytical models and dashboards for operational demand, staffing, support costs, and pilot programs; partnered with Operations, Product, and Finance to translate business needs into reporting.
 
-SKILLS
-AI integration, local and browser-based models, LLM evaluation, prompt and system design, data analysis, Hive, SQL, Python, JavaScript, HTML, CSS, React, dashboards, data pipelines, legal technology, paralegal research, and workflow automation.
+Uber | Operations Specialist
+Feb 2015 - Feb 2018
+- Developed workforce forecasts and operational reporting using R, Python, Jupyter, Google Sheets, and Tableau; supported staffing decisions and process improvements.
 
-CONTACT
-RichardX13@gmail.com
-https://www.linkedin.com/in/richardjones2020/
+Uber | Operations Coordinator
+Feb 2014 - Jan 2015
+- Supported activation-center operations and reporting with Python, JavaScript, MySQL, Google Apps Script, and SSH-based tools.
+
+AZ Cloud9 Studios / Cloud 9 Photography | Owner Manager
+Apr 2012 - Dec 2013
+- Administered databases through phpMyAdmin and used AWS to back up database records and photographic images; handled recovery and access controls for business systems.
+
+Smok'n Joe's Bar | Owner Manager
+Mar 2011 - Jan 2012
+- Administered a Linux-based POS system over SSH, including backup and recovery of transaction records; handled remote recovery for Linux-based security systems.
+
+Vangent | Workforce Analyst
+Apr 2008 - Jan 2011
+- Analyzed workloads and staffing needs, built workforce forecasts, and supported operational reporting and contingency planning in government-contractor environments.
+
+Bank of America | Senior Operations Analyst
+Jan 2003 - Feb 2008
+- Analyzed operational performance, contact routing, workloads, and staffing to support forecasting, service delivery, and process improvements.
+
