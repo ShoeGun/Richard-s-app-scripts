@@ -1283,7 +1283,7 @@
   <script>
     (() => {
       const timelineSection = document.getElementById('timeline');
-      document.getElementById('browser-agent')?.after(timelineSection);
+      if (timelineSection) document.getElementById('browser-agent')?.before(timelineSection);
       const timelinePanel = document.querySelector('.original-timeline-panel');
       const timelineFrame = document.querySelector('.timeline-frame');
       const timelineToggleLabel = document.querySelector('.timeline-toggle-label');

@@ -126,7 +126,21 @@ function isDemoDataRequest(request: string) {
 }
 
 function isAnalysisRequest(request: string) {
-  return /\b(?:analy[sz]e|count|average|avg|sum|minimum|min|max(?:imum)?|compare|sort|group|chart|graph|rows?|categories?|regions?|projects?)\b/i.test(request);
+  return /\b(?:analy[sz]e|count|average|avg|sum|minimum|min|max(?:imum)?|compare|sort|group|chart|graph|rows?|categories?|regions?)\b/i.test(request);
+}
+
+// Portfolio questions are conversation, even after a visitor has used data mode.
+// Explicit calculations still go through the validated analytics pipeline.
+function projectConversationAnswer(request: string): string | null {
+  if (!/\b(?:projects?|henry(?:'s)?|kepler|altitude)\b/i.test(request)) return null;
+  if (/\b(?:count|how many|average|avg|sum|minimum|maximum|sort|group|rows?|scores?|dataset|categories|chart|graph)\b/i.test(request)) return null;
+  if (!/\b(?:what|which|who|why|how|tell|about|explain|describe|walk|compare|difference|projects?)\b/i.test(request)
+    && !/^(?:henry(?:'s)?|kepler|altitude)[.!?\s]*$/i.test(request)) return null;
+  if (isProjectComparisonQuestion(request)) return projectCompareAnswer;
+  if (/\bhenry/i.test(request)) return "Henry's Super Scoops is a pet-waste cleanup service website and scheduling workflow. Richard connected Google Sheets, Apps Script, appointments, and Calendar integration to make the day-to-day work easier to manage.";
+  if (/\bkepler\b/i.test(request)) return 'The Kepler project puts an interactive map inside a Google web app and loads its data from a spreadsheet. It demonstrates how location data can become something you can explore visually. Use the Kepler live-view button on the project card to see the map and a public spreadsheet side by side.';
+  if (/\baltitude\b/i.test(request)) return 'Altitude Directions explores route planning with elevation in mind. The project image shows a route and elevation information; open the live app to explore it. It is a demonstration, not a substitute for professional guidance about altitude or diving safety.';
+  return projectOverviewAnswer;
 }
 
 function minimalPagePrompt(request: string) {
@@ -334,7 +348,6 @@ const AgentApp = () => {
     } else if (message.type === 'generation-started') {
       window.dispatchEvent(new CustomEvent('shoegun-agent-chat-status', { detail: { busy: true, message: 'Dom is thinking locally...' } }));
       postFaceMood('thinking');
-      postFaceSpeech('');
       setAgent({ status: 'generating', output: '' });
     } else if (message.type === 'generation-chunk') {
       postFaceSpeech(message.text);
@@ -383,6 +396,18 @@ const AgentApp = () => {
   const runAgent = (requestedPrompt = prompt, requestedMode = mode) => {
     try {
       if (modelReady) postFaceMood(faceMoodForPrompt(requestedPrompt));
+      const projectAnswer = projectConversationAnswer(requestedPrompt);
+      if (projectAnswer) {
+        setMode('page');
+        modeRef.current = 'page';
+        setPendingAction(null);
+        setAgent({ status: 'ready', output: projectAnswer });
+        setTrainingAnswer(projectAnswer);
+        postFaceMood('happy');
+        postFaceSpeech(projectAnswer, true);
+        window.dispatchEvent(new CustomEvent('shoegun-agent-chat-response', { detail: { message: projectAnswer } }));
+        return;
+      }
       const schema = datasetState.status === 'ready' ? datasetState.schema : [];
       const activeCapabilityPrompt = capabilityActive ? capabilityContainerPrompt(ANALYTICS_HOTSHOT_CONTAINER) : '';
       const hasToolContext = contextControls.includeDiagnostics || contextControls.includeTrace || contextControls.includeConsole || contextControls.includeEnvironment;
@@ -499,7 +524,7 @@ const AgentApp = () => {
         }
         if (isProjectWalkthroughQuestion(requestedPrompt)) {
           const answer = /henry/i.test(requestedPrompt)
-            ? "Henry's Super Scoops is a streamlined CMS concept built around Google Sheets and Apps Script. It demonstrates appointment automation, resource allocation, and Calendar-oriented workflow for a small dessert-themed business."
+            ? "Henry's Super Scoops is a pet-waste cleanup service website built around Google Sheets and Apps Script. It demonstrates appointment automation and Calendar integration for a small service business."
             : /kepler/i.test(requestedPrompt)
               ? 'Kepler in a Google Web App demonstrates how Kepler.gl can be extended inside Google Web Apps. It loads data dynamically from Sheets and presents interactive mapping for geospatial analysis; I can open the project view and a visitor-supplied public Sheet side by side.'
               : 'The Altitude Directions App is a route-planning tool for altitude-sensitive situations. It considers thresholds, assisting divers, and altitude-sensitive users so route choices can be safer and more efficient.';
