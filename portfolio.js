@@ -76,10 +76,16 @@
     const map = workspace.querySelector('iframe[title="Live Kepler mapping application"]');
     const sheet = workspace.querySelector('iframe[title="Kepler source spreadsheet"]');
     const input = workspace.querySelector('input');
+    input.value = 'https://docs.google.com/spreadsheets/d/18Jtv7o-Tfj4fgOJswK3VHcOrQ-W3AQQpzT38KYVSNs0/edit';
     const message = workspace.querySelector('[data-sheet-status]');
     const openSheet = workspace.querySelector('[data-open-sheet]');
     workspace.querySelector('[data-open-map]').href = keplerLink.href;
-    workspace.addEventListener('toggle', () => { if (workspace.open && !map.getAttribute('src')) map.src = keplerLink.href; });
+    workspace.addEventListener('toggle', () => {
+      if (workspace.open && !map.getAttribute('src')) {
+        map.src = keplerLink.href;
+        workspace.querySelector('form').requestSubmit();
+      }
+    });
     workspace.querySelector('[data-refresh-map]').addEventListener('click', () => { map.src = keplerLink.href; });
     workspace.querySelector('form').addEventListener('submit', event => {
       event.preventDefault();
